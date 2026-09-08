@@ -4,6 +4,37 @@ Local Django factor research workspace built on the `FactorsToday-V2-Proxy-Thema
 locally constructed factor returns, historical stock exposures, portfolio factor analysis,
 screens, optimization, monitoring, and monthly backtests.
 
+## Clone and Git LFS
+
+The research database (`data/db.sqlite3`, about 294 MB) is stored with
+[Git LFS](https://git-lfs.com/), not as a normal Git blob. Install Git LFS **before**
+you clone, or you will get a tiny pointer file instead of the prices and factor results.
+
+Download Git LFS from [https://git-lfs.com](https://git-lfs.com), or on Windows:
+
+```powershell
+winget install GitHub.GitLFS
+```
+
+Then clone:
+
+```powershell
+git lfs install
+git clone https://github.com/mariohe85/QuantLab.git
+cd QuantLab
+```
+
+If you already cloned without Git LFS, install it and pull the real file:
+
+```powershell
+git lfs install
+git lfs pull
+```
+
+A correct checkout has a `data/db.sqlite3` of roughly 294 MB. A 100–200 byte file means LFS
+did not download the data. After that, run `setup.ps1` as usual; you do not need
+`-RebuildResearch` unless you want to rebuild from Yahoo.
+
 ## Boundaries
 
 - Current S&P 500 membership is used historically, so results are survivorship-biased.
