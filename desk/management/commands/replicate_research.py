@@ -37,9 +37,9 @@ class Command(BaseCommand):
         )
         if has_research:
             raise CommandError(
-                "Research tables are not empty. This command is for a clean database. "
-                "Delete data/db.sqlite3 and rerun setup.ps1, or use the normal "
-                "incremental workflows."
+                "Research tables are not empty. This command will not overwrite "
+                "data/db.sqlite3. Use the existing database, or move that file aside "
+                "yourself if you intentionally want a clean rebuild."
             )
         if options["months"] < 1:
             raise CommandError("--months must be at least 1.")

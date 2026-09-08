@@ -32,8 +32,8 @@ git lfs pull
 ```
 
 A correct checkout has a `data/db.sqlite3` of roughly 294 MB. A 100–200 byte file means LFS
-did not download the data. After that, run `setup.ps1` as usual; you do not need
-`-RebuildResearch` unless you want to rebuild from Yahoo.
+did not download the data. After that, run `setup.ps1` as usual. It will keep that database
+and will not rebuild from Yahoo.
 
 ## Boundaries
 
@@ -68,9 +68,11 @@ Alternatively, run a script without changing policy at all:
 powershell -ExecutionPolicy Bypass -File .\start_quantlab.ps1
 ```
 
-`setup.ps1` creates `.venv`, installs `requirements.txt`, creates `data/db.sqlite3`, applies all
-migrations, and runs Django's system check. It is safe to rerun for normal environment updates.
-It does not download data unless explicitly requested.
+`setup.ps1` creates `.venv`, installs `requirements.txt`, and applies migrations. If
+`data/db.sqlite3` already exists (including the Git LFS checkout), it is left in place.
+Setup never deletes or replaces that file. It only creates a new database when the file
+is missing. It does not download data unless you pass `-RebuildResearch`, and that flag
+is refused when a populated database is already present.
 
 The launcher starts the durable worker and web UI at <http://127.0.0.1:8086>. Django admin is
 at <http://127.0.0.1:8086/admin/> (`admin` / `quantlab` unless `QUANTLAB_ADMIN_USER` or
@@ -82,8 +84,11 @@ sample optimizer, screen, risk, and backtest records and is not part of the clea
 
 ### First run from an empty database
 
+Skip this section if `data/db.sqlite3` is already present from Git LFS. That file is the
+research database; `setup.ps1` will keep it.
+
 Three stages must run in order: prices, then factor returns, then the per-stock decomposition.
-`setup.ps1` can run all three, using the IDs produced by each preceding stage:
+`setup.ps1` can run all three **only when no populated database exists**, using the IDs produced by each preceding stage:
 
 ```powershell
 # Creates the environment and reproduces prices, 56 factor returns, four model
