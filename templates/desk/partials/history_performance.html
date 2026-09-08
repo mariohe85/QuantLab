@@ -1,0 +1,93 @@
+{% load optimizer_display %}
+{% with prefix=collapse_prefix|default:"history" %}
+<div class="metric-grid">
+  <article><span>History begins</span><strong>{{ history.start|date:"M j, Y" }}</strong></article>
+  <article><span>Latest observation</span><strong>{{ history.end|date:"M j, Y" }}</strong></article>
+  <article><span>Trading days</span><strong>{{ history.observations }}</strong></article>
+  <article><span>Monthly rebalances</span><strong>{{ history.rebalances|length }}</strong></article>
+</div>
+
+<div class="grid two">
+  <article class="collapse-panel">
+    <details data-collapse-key="{{ prefix }}-equity" open>
+      <summary><h2>Growth of $1</h2></summary>
+      <div class="collapse-body">
+        <div class="chart" data-chart="history-equity"></div>
+      </div>
+    </details>
+  </article>
+  <article class="collapse-panel">
+    <details data-collapse-key="{{ prefix }}-drawdown" open>
+      <summary><h2>Drawdown</h2></summary>
+      <div class="collapse-body">
+        <div class="chart" data-chart="history-drawdown"></div>
+      </div>
+    </details>
+  </article>
+</div>
+<div hidden>
+  {% for row in history.chart_rows %}
+    <span
+      data-history-series
+      data-date="{{ row.date }}"
+      data-portfolio-equity="{{ row.portfolio_equity }}"
+      data-spy-equity="{{ row.spy_equity }}"
+      data-portfolio-drawdown="{{ row.portfolio_drawdown }}"
+      data-spy-drawdown="{{ row.spy_drawdown }}"
+    ></span>
+  {% endfor %}
+</div>
+
+<article class="collapse-panel">
+  <details data-collapse-key="{{ prefix }}-statistics" open>
+    <summary>
+      <div class="row">
+        <div><h2>Performance statistics</h2><p>{{ history.methodology }}</p></div>
+        <span class="status status-pending">approximate</span>
+      </div>
+    </summary>
+    <div class="collapse-body">
+      <div class="table-wrap compact-table">
+        <table>
+          <thead><tr><th>Metric</th><th>Portfolio</th><th>SPY</th></tr></thead>
+          <tbody>
+            {% for row in history.metric_rows %}
+              <tr><td>{{ row.label }}</td><td>{{ row.portfolio }}</td><td>{{ row.spy }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% for warning in history.warnings %}<p class="data-note">{{ warning }}</p>{% endfor %}
+    </div>
+  </details>
+</article>
+
+<article class="collapse-panel">
+  <details data-collapse-key="{{ prefix }}-rebalances">
+    <summary>
+      <div class="row">
+        <div><h2>Historical rebalances</h2><p>Signal at month-end; holdings begin on the next stored trading day.</p></div>
+        <span class="muted">{{ history.rebalances|length }} rebalance{{ history.rebalances|length|pluralize }}</span>
+      </div>
+    </summary>
+    <div class="collapse-body">
+      <div class="portfolio-holding-details">
+        {% for row in history.rebalances reversed %}
+          <details>
+            <summary>
+              <span><strong>{{ row.signal_date|date:"M j, Y" }}</strong> &rarr; {{ row.execution_date|date:"M j, Y" }}</span>
+              <span>{{ row.tickers|length }} holdings · {{ row.weight|percentage:2 }} each</span>
+            </summary>
+            <p>
+              {% for ticker in row.tickers %}<span class="selection-component">{{ ticker }}</span>{% endfor %}
+            </p>
+            <small>Turnover {{ row.turnover|percentage:1 }}{% if row.model_count is not None %} · {{ row.model_count }} model + {{ row.manual_count }} manual{% endif %}</small>
+          </details>
+        {% empty %}
+          <div class="empty-state"><span>No aligned historical rebalances.</span></div>
+        {% endfor %}
+      </div>
+    </div>
+  </details>
+</article>
+{% endwith %}

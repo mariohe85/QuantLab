@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.py[cod]
+data/*.sqlite3-shm
+data/*.sqlite3-wal
+factors/data/
+factors/validation_chart.png
+.pytest_cache/
+.coverage
+.DS_Store
+_DRAFT/

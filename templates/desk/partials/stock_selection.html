@@ -1,0 +1,255 @@
+{% load optimizer_display %}
+<section class="workspace-heading">
+  <div>
+    <p class="eyebrow">Portfolio formation</p>
+    <h1>Stock Selection</h1>
+    <p>Combine V2 factor exposures into a weighted score, select the top stocks, then create an equal-weight portfolio for factor risk or optimization.</p>
+  </div>
+</section>
+
+<div class="selection-command-center">
+  <aside class="selection-sidebar">
+    <div class="selection-sidebar-header">
+      <div><p class="eyebrow">Saved</p><h2>Selection screens</h2></div>
+      <a class="button-link" href="{% url 'desk:page' 'stock-selection' %}?new=1">New</a>
+    </div>
+    <div class="selection-screen-list">
+      {% for screen in selection_screens %}
+        <a href="{% url 'desk:page' 'stock-selection' %}?screen_id={{ screen.id }}" class="{% if screen.id == selected_selection_screen.id %}active{% endif %}">
+          <strong>{{ screen.name }}</strong>
+          <span>{{ screen.top_n }} stocks · {{ screen.model_level }}</span>
+          <small>{{ screen.updated_at|date:"M j, Y H:i" }}</small>
+        </a>
+      {% empty %}
+        <div class="empty-state"><span>No saved selections yet.</span></div>
+      {% endfor %}
+    </div>
+    <div class="selection-recent-portfolios">
+      <h3>Recent portfolios</h3>
+      {% for portfolio in selection_portfolios %}
+        <a href="{% url 'desk:page' 'portfolio' %}?portfolio_id={{ portfolio.id }}">{{ portfolio.name }} <span>{{ portfolio.holdings.count }}</span></a>
+      {% empty %}
+        <p>No saved portfolios.</p>
+      {% endfor %}
+    </div>
+    <div class="selection-manual-portfolio">
+      <h3>Create manual portfolio</h3>
+      <p>Paste tickers to create a permanent equal-weight portfolio.</p>
+      <form method="post" action="{% url 'desk:portfolio_create_manual' %}">{% csrf_token %}
+        <label>Name <input name="name" placeholder="My portfolio" required></label>
+        <label>Tickers
+          <textarea name="tickers" placeholder="AAPL, MSFT, BRK-B" required></textarea>
+        </label>
+        <button class="primary">Create portfolio</button>
+      </form>
+    </div>
+  </aside>
+
+  <section class="selection-workbench">
+    <article class="collapse-panel">
+      <details data-collapse-key="selection-builder" {% if not selection_preview %}open data-collapse-force-open{% endif %}>
+      <summary>
+        <div class="row">
+          <div><p class="eyebrow">Screen builder</p><h2>{{ selection_config.name }}</h2></div>
+          {% if selected_selection_screen %}<span class="muted">Saved screen #{{ selected_selection_screen.id }}</span>{% endif %}
+        </div>
+      </summary>
+      <div class="collapse-body">
+      <form method="post" action="{% url 'desk:stock_selection_preview' %}" class="selection-builder">{% csrf_token %}
+        {% if selection_config.screen_id %}<input type="hidden" name="screen_id" value="{{ selection_config.screen_id }}">{% endif %}
+        <div class="selection-basics">
+          <label>Screen name <input name="name" value="{{ selection_config.name }}" required></label>
+          <label>Model dataset
+            <select name="build_id">
+              {% for option in selection_build_options %}
+                <option value="{{ option.build.id }}" {% if option.build.id == selected_selection_build.id %}selected{% endif %}>{{ option.build.definition_version }} · {{ option.stock_count }} latest stocks · {{ option.history_stock_count }} with history · {{ option.as_of|default:"no fits" }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Model
+            <select name="model_level">
+              {% for level in selection_model_levels %}
+                <option value="{{ level.key }}" {% if level.key == selection_config.model_level %}selected{% endif %} {% if not level.available %}disabled{% endif %}>{{ level.label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Model-selected stocks <input type="number" name="top_n" min="1" max="100" value="{{ selection_config.top_n }}" required></label>
+        </div>
+
+        <div class="selection-section-heading">
+          <div><h3>Factors and weights</h3><p>Tick a factor to select it; its weight and direction unlock only once it is ticked. Weights are normalized automatically. Use direction—not a negative weight—to prefer lower exposure.</p></div>
+          <label class="selection-factor-search">Find factor <input type="search" data-selection-factor-search placeholder="Value, Momentum, country…"></label>
+        </div>
+        <div class="selection-factor-grid">
+          {% for group in selection_factor_groups %}
+            <fieldset data-selection-factor-group>
+              <legend>{{ group.family }}</legend>
+              {% for item in group.factors %}
+                <div class="selection-factor-row" data-selection-factor-row>
+                  <label>
+                    <input type="checkbox" name="factor_{{ item.definition.field_key }}" {% if item.selected %}checked{% endif %}>
+                    <span>{{ item.definition.name }}</span>
+                  </label>
+                  <input type="number" name="weight_{{ item.definition.field_key }}" min="0" step="0.01" value="{{ item.weight }}" aria-label="{{ item.definition.name }} weight" {% if not item.selected %}disabled{% endif %}>
+                  <select name="direction_{{ item.definition.field_key }}" aria-label="{{ item.definition.name }} direction" {% if not item.selected %}disabled{% endif %}>
+                    <option value="1" {% if item.direction == 1 %}selected{% endif %}>High</option>
+                    <option value="-1" {% if item.direction == -1 %}selected{% endif %}>Low</option>
+                  </select>
+                </div>
+              {% endfor %}
+            </fieldset>
+          {% endfor %}
+        </div>
+
+        <details class="selection-constraints">
+          <summary>Universe constraints and manual overrides</summary>
+          <div class="grid two">
+            <fieldset>
+              <legend>Allowed sectors (none = all)</legend>
+              {% for sector in selection_preview.sectors %}
+                <label class="check-pill"><input type="checkbox" name="sectors" value="{{ sector }}" {% if sector in selection_config.sectors %}checked{% endif %}> {{ sector }}</label>
+              {% empty %}<span class="muted">Preview once to load sectors.</span>{% endfor %}
+            </fieldset>
+            <div>
+              <label>Minimum trading days <input type="number" name="minimum_trading_days" min="0" max="756" step="1" value="{{ selection_config.minimum_trading_days|default_if_none:252 }}"><small>Names need this many daily returns in the trailing 756-day window. 252 is one year. Coverage is days ÷ 756, not a listing-date calendar fraction.</small></label>
+              <label>Minimum adjusted R² <input type="number" name="minimum_adjusted_r2" min="-1" max="1" step="0.05" value="{{ selection_config.minimum_adjusted_r2|default_if_none:'' }}"></label>
+            </div>
+            <label>Exclude tickers
+              <textarea name="excluded_tickers" placeholder="TSLA, AAPL">{{ selection_config.excluded_tickers|join:", " }}</textarea>
+              <small>Excluded names are removed before the top-X model selection.</small>
+            </label>
+            <label>Manual additions
+              <textarea name="manual_tickers" placeholder="MSFT, NVDA">{{ selection_config.manual_tickers|join:", " }}</textarea>
+              <small>Manual names with price history are appended permanently beyond top X, even without a model fit, and receive the same equal target weight.</small>
+            </label>
+          </div>
+        </details>
+        <button class="primary">Preview selection</button>
+      </form>
+      {% if selection_error %}<div class="inline-alert"><strong>Preview unavailable</strong><span>{{ selection_error }}</span></div>{% endif %}
+      </div>
+      </details>
+    </article>
+
+    {% if selection_preview %}
+      <div class="metric-grid">
+        <article><span>Latest fit</span><strong>{{ selection_preview.as_of|date:"M j, Y" }}</strong></article>
+        <article><span>Scored universe</span><strong>{{ selection_preview.universe_count }}</strong></article>
+        <article><span>Model selection</span><strong>{{ selection_preview.model_selected_count }}</strong></article>
+        <article><span>Manual additions</span><strong>{{ selection_preview.manual_count }}</strong></article>
+        <article><span>Final holdings</span><strong>{{ selection_preview.final_count }}</strong></article>
+        <article><span>Equal weight</span><strong>{% widthratio 100 selection_preview.final_count 1 %}%</strong></article>
+      </div>
+
+      <section class="section-heading">
+        <div><p class="eyebrow">History</p><h2>On-the-fly performance</h2></div>
+        <p>The current configuration is replayed across every stored monthly decomposition, whether or not the screen has been saved.</p>
+      </section>
+      {% if selection_history %}
+        {% include "desk/partials/history_performance.html" with history=selection_history collapse_prefix="selection-history" %}
+      {% elif selection_history_error %}
+        <div class="inline-alert"><strong>Historical performance unavailable</strong><span>{{ selection_history_error }}</span></div>
+      {% endif %}
+
+      <article class="collapse-panel">
+        <details data-collapse-key="selection-score-distribution" open>
+        <summary>
+          <div class="row"><div><h2>Composite score distribution</h2><p>Highest and lowest five weighted beta z-scores.</p></div><span class="muted">{{ selection_preview.factor_weights|length }} factors</span></div>
+        </summary>
+        <div class="collapse-body">
+        <div class="chart" data-chart="selection-score" data-title="{{ selection_config.name }} composite score"></div>
+        </div>
+        </details>
+        <div hidden>
+          {% for row in selection_preview.chart_rows %}
+            <span data-selection-score data-name="{{ row.ticker }}" data-value="{{ row.score }}"></span>
+          {% endfor %}
+        </div>
+      </article>
+
+      <article class="collapse-panel">
+        <details data-collapse-key="selection-final-preview" open>
+        <summary>
+          <div class="row">
+            <div><h2>Final portfolio preview</h2><p>Top {{ selection_config.top_n }} eligible model names plus manual additions.</p></div>
+            <span class="status status-succeeded">equal weight</span>
+          </div>
+        </summary>
+        <div class="collapse-body">
+        <div class="table-wrap">
+          <table data-sortable>
+            <thead><tr><th>Source</th><th>Ticker</th><th>Company</th><th>Sector</th><th>Score</th><th>Percentile</th><th>Confidence</th><th>Weight</th><th>Components</th></tr></thead>
+            <tbody>
+              {% for row in selection_included_rows %}
+                <tr>
+                  <td><span class="status status-{% if row.selection_source == 'manual' %}pending{% else %}succeeded{% endif %}">{{ row.selection_source }}</span></td>
+                  <td><strong>{{ row.ticker }}</strong></td><td>{{ row.security.name|default:"—" }}</td><td>{{ row.security.sector|default:"—" }}</td>
+                  <td>{{ row.score|floatformat:3 }}</td><td>{{ row.percentile|floatformat:1 }}%</td><td>{{ row.confidence|floatformat:2 }}</td><td>{{ row.portfolio_weight|percentage:2 }}</td>
+                  <td>{% for component in row.component_rows %}<span class="selection-component">{{ component.name }} {{ component.value|floatformat:2 }}</span>{% endfor %}</td>
+                </tr>
+              {% empty %}<tr><td colspan="9">No stocks passed the current selection.</td></tr>{% endfor %}
+            </tbody>
+          </table>
+        </div>
+        </div>
+        </details>
+      </article>
+
+      <div class="grid two">
+        <article class="collapse-panel">
+          <details data-collapse-key="selection-save-screen" open>
+          <summary><h2>Save selection screen</h2></summary>
+          <div class="collapse-body">
+          <p>Store this weighted setup and its current ranking for reuse.</p>
+          <form method="post" action="{% url 'desk:stock_selection_save' %}">{% csrf_token %}
+            <label>Screen name <input name="name" value="{{ selection_config.name }}" required></label>
+            <button>Save screen and ranking</button>
+          </form>
+          </div>
+          </details>
+        </article>
+        <article class="collapse-panel">
+          <details data-collapse-key="selection-create-portfolio" open>
+          <summary><h2>Create equal-weight portfolio</h2></summary>
+          <div class="collapse-body">
+          <p>Save {{ selection_preview.final_count }} holdings, then open factor risk or optimization.</p>
+          <form method="post" action="{% url 'desk:stock_selection_portfolio' %}">{% csrf_token %}
+            <label>Portfolio name <input name="name" value="{{ selection_config.name }} Portfolio" required></label>
+            <div class="row">
+              <button class="primary" name="action" value="factors">Create and view exposure &amp; risk</button>
+              <button name="action" value="optimizer">Create and optimize</button>
+            </div>
+          </form>
+          </div>
+          </details>
+        </article>
+      </div>
+
+      <article class="collapse-panel">
+        <details data-collapse-key="selection-ranked-universe">
+        <summary>
+          <div class="row"><div><h2>Full ranked universe</h2><p>Model selection is limited to X; excluded and filtered names remain visible for audit.</p></div><span class="muted">{{ selection_preview_rows|length }} stocks</span></div>
+        </summary>
+        <div class="collapse-body">
+        <div class="table-wrap selection-ranking-table">
+          <table data-sortable>
+            <thead><tr><th>Rank</th><th>Included</th><th>Ticker</th><th>Company</th><th>Sector</th><th>Score</th><th>Percentile</th><th>Eligible</th><th>Coverage</th><th>Adjusted R²</th></tr></thead>
+            <tbody>
+              {% for row in selection_preview_rows %}
+                <tr class="{% if row.included %}selected-row{% endif %}">
+                  <td>{{ row.rank }}</td><td>{{ row.included|yesno:"yes,no" }}{% if row.selection_source %} · {{ row.selection_source }}{% endif %}</td>
+                  <td>{{ row.ticker }}</td><td>{{ row.security.name|default:"—" }}</td><td>{{ row.security.sector|default:"—" }}</td>
+                  <td class="zscore-cell" data-zscore="{{ row.score }}">{% if row.score is not None %}{{ row.score|floatformat:3 }}{% else %}—{% endif %}</td><td>{% if row.percentile is not None %}{{ row.percentile|floatformat:1 }}%{% else %}—{% endif %}</td><td>{{ row.eligible|yesno:"yes,no" }}</td><td>{{ row.fit.coverage|floatformat:2|default:"—" }}</td><td>{{ row.fit.adjusted_r2|floatformat:3|default:"—" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        </div>
+        </details>
+      </article>
+    {% else %}
+      <article><div class="empty-state"><strong>Configure a selection to begin</strong><span>Choose at least one factor, set its weight and direction, then preview.</span></div></article>
+    {% endif %}
+  </section>
+</div>

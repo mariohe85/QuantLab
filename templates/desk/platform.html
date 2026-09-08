@@ -1,0 +1,39 @@
+{% load assets static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>QuantLab · {{ page|title }}</title>
+  <link rel="stylesheet" href="{% asset 'css/app.css' %}">
+  <script src="{% static 'vendor/htmx.min.js' %}" defer></script>
+  <script src="{% static 'vendor/echarts.min.js' %}" defer></script>
+</head>
+<body>
+<header class="app-header">
+  <div><strong>QuantLab</strong><small> V2 proxy factors · local research</small></div>
+  <nav>
+    <a href="{% url 'desk:page' 'factors' %}" class="{% if page == 'factors' %}active{% endif %}">Factors</a>
+    <a href="{% url 'desk:page' 'signals' %}" class="{% if page == 'signals' %}active{% endif %}">Signals</a>
+    <a href="{% url 'desk:page' 'stock' %}" class="{% if page == 'stock' %}active{% endif %}">Stock</a>
+    <a href="{% url 'desk:page' 'stock-selection' %}" class="{% if page == 'stock-selection' or page == 'portfolio_detail' %}active{% endif %}">Stock Selection</a>
+    <a href="{% url 'desk:page' 'portfolio' %}" class="{% if page == 'portfolio' %}active{% endif %}">Portfolio</a>
+    <a href="{% url 'desk:page' 'optimizer' %}" class="{% if page == 'optimizer' %}active{% endif %}">Optimizer</a>
+  </nav>
+</header>
+<main class="page-shell">
+  {% if page == "factors" or page == "stock" or page == "portfolio" %}
+    {% include "desk/partials/factors.html" %}
+  {% elif page == "signals" %}
+    {% include "desk/partials/signals.html" %}
+  {% elif page == "stock-selection" %}
+    {% include "desk/partials/stock_selection.html" %}
+  {% elif page == "portfolio_detail" %}
+    {% include "desk/partials/portfolio_detail.html" %}
+  {% elif page == "optimizer" %}
+    {% include "desk/partials/optimizer.html" %}
+  {% endif %}
+</main>
+<script src="{% asset 'js/app.js' %}" defer></script>
+</body>
+</html>

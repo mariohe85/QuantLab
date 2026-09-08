@@ -1,0 +1,219 @@
+{% load optimizer_display %}
+<section class="workspace-heading">
+  <div>
+    <p class="eyebrow">Cross-sectional research</p>
+    <h1>Factor signals</h1>
+    <p>Rank the stock universe by standardized factor exposure, then open a company to trace its beta through time.</p>
+  </div>
+</section>
+
+<article class="signal-controls">
+  <form method="get" action="{% url 'desk:page' 'signals' %}" class="filter-strip">
+    <label>Model dataset
+      <select name="build_id">
+        {% for option in signal_build_options %}
+          <option value="{{ option.build.id }}" {% if option.build.id == selected_signal_build.id %}selected{% endif %}>
+            {{ option.build.definition_version }} · {{ option.stock_count }} latest stocks · {{ option.history_stock_count }} with history · {{ option.as_of|default:"no fits" }}
+          </option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Model
+      <select name="model_level">
+        {% for level in signal_model_levels %}
+          <option value="{{ level.key }}" {% if level.key == selected_model_level %}selected{% endif %} {% if not level.available %}disabled{% endif %}>{{ level.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Direction
+      <select name="direction">
+        <option value="1" {% if signal_direction == 1 %}selected{% endif %}>High exposure first</option>
+        <option value="-1" {% if signal_direction == -1 %}selected{% endif %}>Low exposure first</option>
+      </select>
+    </label>
+    <label>Sector
+      <select name="sector">
+        <option value="">All sectors</option>
+        {% for name in signal_ranking.sectors %}
+          <option value="{{ name }}" {% if name == selected_signal_sector %}selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% if selected_signal_factor %}<input type="hidden" name="factor" value="{{ selected_signal_factor.name }}">{% endif %}
+    <button class="primary">Apply view</button>
+  </form>
+</article>
+
+{% if not selected_signal_build %}
+  <article><div class="empty-state"><strong>No stock models are available</strong><span>Build monthly stock exposures before opening Signals.</span></div></article>
+{% else %}
+  <div class="signal-command-center">
+    <aside class="signal-browser">
+      <div class="signal-browser-header">
+        <div><p class="eyebrow">Factors</p><h2>Signal library</h2></div>
+        <span>{{ signal_factor_groups|length }} families</span>
+      </div>
+      <label class="signal-search">Find factor <input type="search" data-signal-search placeholder="Market, Value, sector…"></label>
+      <nav class="signal-family-filter">
+        <a href="?build_id={{ selected_signal_build.id }}&amp;model_level={{ selected_model_level }}&amp;factor={{ selected_signal_factor.name|urlencode }}&amp;direction={{ signal_direction }}{% if selected_signal_sector %}&amp;sector={{ selected_signal_sector|urlencode }}{% endif %}" class="{% if not selected_signal_family %}active{% endif %}">All</a>
+        {% for family in signal_factor_families %}
+          <a href="?build_id={{ selected_signal_build.id }}&amp;model_level={{ selected_model_level }}&amp;factor={{ selected_signal_factor.name|urlencode }}&amp;direction={{ signal_direction }}&amp;family={{ family }}{% if selected_signal_sector %}&amp;sector={{ selected_signal_sector|urlencode }}{% endif %}" class="{% if family == selected_signal_family %}active{% endif %}">{{ family }}</a>
+        {% endfor %}
+      </nav>
+      <div class="signal-factor-list">
+        {% for group in signal_factor_groups %}
+          <section>
+            <h3>{{ group.family }}</h3>
+            {% for factor in group.factors %}
+              <a href="?build_id={{ selected_signal_build.id }}&amp;model_level={{ selected_model_level }}&amp;factor={{ factor.name|urlencode }}&amp;direction={{ signal_direction }}{% if selected_signal_family %}&amp;family={{ selected_signal_family }}{% endif %}{% if selected_signal_sector %}&amp;sector={{ selected_signal_sector|urlencode }}{% endif %}" class="{% if factor.id == selected_signal_factor.id %}active{% endif %}">
+                <span>{{ factor.name }}</span>
+                <small>{{ factor.get_provenance_badge_display }}</small>
+              </a>
+            {% endfor %}
+          </section>
+        {% empty %}
+          <div class="empty-state"><span>No factors belong to this model.</span></div>
+        {% endfor %}
+      </div>
+    </aside>
+
+    <section class="signal-workbench">
+      {% if selected_signal_factor %}
+        <article class="signal-summary collapse-panel">
+          <details data-collapse-key="signal-summary" open>
+          <summary>
+            <div class="row">
+              <div>
+                <p class="eyebrow">{{ selected_signal_factor.family }}</p>
+                <h2>{{ selected_signal_factor.name }}</h2>
+                <p>{{ selected_signal_factor.description }}</p>
+              </div>
+              <span class="provenance provenance-{{ selected_signal_factor.provenance_badge }}">{{ selected_signal_factor.get_provenance_badge_display }}</span>
+            </div>
+          </summary>
+          <div class="collapse-body">
+          <div class="metric-grid">
+            <article><span>Ranked universe</span><strong>{{ signal_ranking.stock_count }}</strong></article>
+            <article><span>Selected exposure</span><strong>{{ signal_ranking.selected_count }}</strong></article>
+            <article><span>Latest fit</span><strong>{{ signal_ranking.as_of|date:"M j, Y" }}</strong></article>
+            <article><span>1d factor return</span><strong>{{ signal_ranking.factor_observation.scaled_return|percentage:2 }}</strong></article>
+            <article><span>1d factor z</span><strong>{{ signal_ranking.factor_observation.zscores.1|floatformat:2|default:"—" }}</strong></article>
+            <article><span>21d factor return</span><strong>{{ signal_ranking.factor_observation.horizons.21|percentage:2 }}</strong></article>
+            <article><span>21d factor z</span><strong>{{ signal_ranking.factor_observation.zscores.21|floatformat:2|default:"—" }}</strong></article>
+          </div>
+          <p class="data-note">Rank = cross-sectional z-score of beta. ElasticNet-omitted exposures remain in the universe at beta 0 and are marked “not selected.”</p>
+          </div>
+          </details>
+        </article>
+
+        <article class="collapse-panel">
+          <details data-collapse-key="signal-distribution" open>
+          <summary>
+            <div class="row">
+              <div><h2>Exposure leaders and laggards</h2><p>Five highest and five lowest scores in the filtered universe.</p></div>
+              <span class="muted">{{ selected_signal_sector|default:"All sectors" }}</span>
+            </div>
+          </summary>
+          <div class="collapse-body">
+          <div class="chart signal-distribution-chart" data-chart="signal-ranking" data-title="{{ selected_signal_factor.name }} exposure z-score"></div>
+          </div>
+          </details>
+          <div hidden>
+            {% for row in signal_chart_rows %}
+              <span data-signal-ranking data-name="{{ row.security.ticker }}" data-value="{{ row.score }}"></span>
+            {% endfor %}
+          </div>
+        </article>
+
+        {% if selected_signal_ticker %}
+          <article id="signal-company-detail" class="signal-company-detail collapse-panel">
+            <details data-collapse-key="signal-company-history" open>
+            <summary>
+              <div class="row">
+                <div>
+                  <p class="eyebrow">Company history</p>
+                  <h2>{{ selected_signal_ticker }} · {{ selected_signal_factor.name }}</h2>
+                  <p>{{ signal_history_rows|length }} of {{ signal_history_target }} target month-ends stored for this build and model.</p>
+                </div>
+              </div>
+            </summary>
+            <div class="collapse-body">
+            <p><a class="button-link" href="?build_id={{ selected_signal_build.id }}&amp;model_level={{ selected_model_level }}&amp;factor={{ selected_signal_factor.name|urlencode }}&amp;direction={{ signal_direction }}{% if selected_signal_sector %}&amp;sector={{ selected_signal_sector|urlencode }}{% endif %}">Close history</a></p>
+            {% if signal_history_job and signal_history_job.status != "succeeded" %}
+              <div class="inline-alert">
+                <strong>Building the missing history now.</strong>
+                <span>The latest point is already available; this panel will reload when the durable job finishes.</span>
+              </div>
+              {% include "desk/job.html" with job=signal_history_job reload_on_success=True %}
+            {% endif %}
+            {% if signal_history_rows %}
+              <div class="grid two">
+                <div>
+                  <h3>Factor beta history</h3>
+                  <div class="chart" data-chart="signal-beta-history" data-title="{{ selected_signal_ticker }} {{ selected_signal_factor.name }} beta"></div>
+                </div>
+                <div>
+                  <h3>Cross-sectional percentile</h3>
+                  <div class="chart" data-chart="signal-percentile-history" data-title="{{ selected_signal_ticker }} {{ selected_signal_factor.name }} percentile" data-value-format="percent-points"></div>
+                </div>
+              </div>
+              <div hidden>
+                {% for row in signal_history_rows %}
+                  <span data-signal-beta-history data-name="{{ row.as_of }}" data-value="{{ row.beta }}"></span>
+                  <span data-signal-percentile-history data-name="{{ row.as_of }}" data-value="{{ row.percentile|default_if_none:'' }}"></span>
+                {% endfor %}
+              </div>
+            {% endif %}
+            </div>
+            </details>
+          </article>
+        {% endif %}
+
+        <article class="collapse-panel">
+          <details data-collapse-key="signal-latest-ranking" open>
+          <summary>
+            <div class="row">
+              <div><h2>Latest stock ranking</h2><p>Click a company to open its history; missing 24-month history is queued automatically.</p></div>
+              <span class="muted">{{ signal_ranking.stock_count }} stocks · {{ signal_ranking.as_of }}</span>
+            </div>
+          </summary>
+          <div class="collapse-body">
+          <div class="table-wrap signal-ranking-table">
+            <table data-sortable>
+              <thead><tr><th>Rank</th><th>Company</th><th>Sector</th><th>Percentile</th><th>Beta z</th><th>Beta</th><th>Selected</th><th>t-stat</th></tr></thead>
+              <tbody>
+                {% for row in signal_ranking_rows %}
+                  <tr class="{% if row.security.ticker == selected_signal_ticker %}selected-row{% endif %}">
+                    <td>{{ row.rank }}</td>
+                    <td>
+                      <form method="post" action="{% url 'desk:signal_company' %}" class="signal-company-form">{% csrf_token %}
+                        <input type="hidden" name="build_id" value="{{ selected_signal_build.id }}">
+                        <input type="hidden" name="model_level" value="{{ selected_model_level }}">
+                        <input type="hidden" name="factor" value="{{ selected_signal_factor.name }}">
+                        <input type="hidden" name="direction" value="{{ signal_direction }}">
+                        <input type="hidden" name="sector" value="{{ selected_signal_sector }}">
+                        <input type="hidden" name="family" value="{{ selected_signal_family }}">
+                        <input type="hidden" name="ticker" value="{{ row.security.ticker }}">
+                        <button class="signal-company-link" title="Open {{ row.security.ticker }} history"><strong>{{ row.security.ticker }}</strong><span>{{ row.security.name|default:"—" }}</span></button>
+                      </form>
+                    </td>
+                    <td>{{ row.security.sector|default:"—" }}</td>
+                    <td>{{ row.percentile|floatformat:1 }}%</td>
+                    <td class="zscore-cell" data-zscore="{{ row.score }}">{{ row.score|floatformat:2 }}</td>
+                    <td>{{ row.beta|floatformat:4 }}</td>
+                    <td>{{ row.selected|yesno:"yes,no" }}</td>
+                    <td>{{ row.t_stat|floatformat:3|default:"—" }}</td>
+                  </tr>
+                {% empty %}
+                  <tr><td colspan="8"><div class="empty-state"><strong>No rankings are available</strong><span>Choose a compatible model/factor or build stock exposures.</span></div></td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          </div>
+          </details>
+        </article>
+      {% endif %}
+    </section>
+  </div>
+{% endif %}

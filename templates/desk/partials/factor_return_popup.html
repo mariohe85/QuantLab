@@ -1,0 +1,52 @@
+<dialog class="factor-return-dialog" data-factor-dialog>
+  <div class="factor-return-dialog-shell">
+    <header>
+      <div>
+        <p class="eyebrow">Factor return monitor</p>
+        <h2><span data-factor-dialog-name>Factor</span> details</h2>
+        <p data-factor-dialog-subtitle>Construction and historical returns for the selected build.</p>
+      </div>
+      <button type="button" class="factor-dialog-close" data-factor-dialog-close aria-label="Close factor details">Close</button>
+    </header>
+    <div class="factor-dialog-loading" data-factor-dialog-loading>Loading factor history…</div>
+    <div class="warning" data-factor-dialog-error hidden></div>
+    <div data-factor-dialog-content hidden>
+      <div class="factor-dialog-controls">
+        <label>Return frequency
+          <select data-factor-frequency>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly" selected>Monthly</option>
+          </select>
+        </label>
+      </div>
+      <section class="factor-construction">
+        <h3>How this factor is built</h3>
+        <p data-factor-description></p>
+        <dl>
+          <div><dt>Construction</dt><dd data-factor-kind>—</dd></div>
+          <div data-factor-legs-row><dt>ETF legs</dt><dd data-factor-legs>—</dd></div>
+          <div data-factor-purification-row><dt>Purified against</dt><dd data-factor-purification>—</dd></div>
+          <div data-factor-estimation-row><dt>Estimation</dt><dd data-factor-estimation>—</dd></div>
+          <div data-factor-volatility-row><dt>Volatility target</dt><dd data-factor-volatility>—</dd></div>
+        </dl>
+        <div data-factor-basket-row hidden>
+          <strong>Fixed equal-weight constituents</strong>
+          <p class="factor-basket" data-factor-basket></p>
+        </div>
+      </section>
+      <div class="grid two">
+        <section>
+          <h3>Cumulative return</h3>
+          <p>Growth of one unit from the first stored observation.</p>
+          <div class="chart factor-return-chart" data-chart="factor-dialog-cumulative"></div>
+        </section>
+        <section>
+          <h3 data-factor-period-title>Monthly return</h3>
+          <p>Compounded return for each selected period.</p>
+          <div class="chart factor-return-chart" data-chart="factor-dialog-period"></div>
+        </section>
+      </div>
+    </div>
+  </div>
+</dialog>

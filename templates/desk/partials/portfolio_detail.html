@@ -1,0 +1,137 @@
+{% load optimizer_display %}
+<section class="workspace-heading">
+  <div>
+    <p class="eyebrow">Portfolio workspace</p>
+    <h1>{{ portfolio_detail.name }}</h1>
+    <p>Holdings, stock-level decomposition, portfolio exposures, and optimization history.</p>
+  </div>
+</section>
+
+<article>
+  <div class="row">
+    <a href="{% url 'desk:page' 'portfolios' %}">Back to portfolios</a>
+    <a href="{% url 'desk:export_portfolio' portfolio_detail.id %}">Export holdings CSV</a>
+  </div>
+</article>
+
+<div class="grid two">
+  <article class="collapse-panel">
+    <details data-collapse-key="portfolio-detail-run-analysis" open>
+      <summary><h2>Run analysis</h2></summary>
+      <div class="collapse-body">
+        <form method="post" action="{% url 'desk:domain_job' 'risk_refresh' %}" hx-post="{% url 'desk:domain_job' 'risk_refresh' %}" hx-target="#portfolio-job">{% csrf_token %}
+          <input type="hidden" name="portfolio_id" value="{{ portfolio_detail.id }}">
+          <label>Model dataset <select name="factor_build_id">{% for build in factor_builds %}<option value="{{ build.id }}">{{ build.display_label }}</option>{% endfor %}</select></label>
+          <button class="primary">Refresh portfolio risk</button>
+        </form>
+        <div id="portfolio-job"></div>
+      </div>
+    </details>
+  </article>
+  <article class="collapse-panel">
+    <details data-collapse-key="portfolio-detail-risk-snapshot" open>
+      <summary><h2>Latest risk snapshot</h2></summary>
+      <div class="collapse-body">
+        {% if portfolio_latest_risk %}
+          <p>As of {{ portfolio_latest_risk.as_of }} · coverage {{ portfolio_latest_risk.coverage|floatformat:2 }}</p>
+          <p>Pred vol {{ portfolio_latest_risk.predicted_volatility|percentage:2 }} · TE {{ portfolio_latest_risk.tracking_error|percentage:2 }}</p>
+        {% else %}
+          <p>No risk snapshot yet.</p>
+        {% endif %}
+      </div>
+    </details>
+  </article>
+</div>
+
+<article class="collapse-panel">
+  <details data-collapse-key="portfolio-detail-holdings" open>
+    <summary>
+      <div class="row">
+        <div><h2>Holdings decomposition</h2></div>
+        <span class="muted">{{ portfolio_holdings_rows|length }} holding{{ portfolio_holdings_rows|length|pluralize }}</span>
+      </div>
+    </summary>
+    <div class="collapse-body">
+      <div class="table-wrap">
+        <table data-sortable>
+          <tr><th>Ticker</th><th>Name</th><th>Weight</th><th>Shares</th><th>Model</th><th>Daily alpha</th><th>Adj R²</th><th>Exposures</th></tr>
+          {% for row in portfolio_holdings_rows %}
+            <tr>
+              <td><a href="{% url 'desk:page' 'stock' %}?ticker={{ row.ticker }}">{{ row.ticker }}</a></td>
+              <td>{{ row.name|default:"-" }}</td>
+              <td>{{ row.weight|percentage:2 }}</td>
+              <td>{{ row.shares|default:"-" }}</td>
+              <td>{{ row.model_level|default:"missing" }}</td>
+              <td>{{ row.alpha|percentage:3 }}</td>
+              <td>{{ row.adjusted_r2|floatformat:3 }}</td>
+              <td class="truncate">{{ row.exposures }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="8">No modeled holdings available yet.</td></tr>
+          {% endfor %}
+        </table>
+      </div>
+    </div>
+  </details>
+</article>
+
+{% if portfolio_latest_risk %}
+  <article class="collapse-panel">
+    <details data-collapse-key="portfolio-detail-factor-exposure" open>
+      <summary>
+        <div class="row">
+          <div><h2>Portfolio-level factor exposure</h2></div>
+          <span class="muted">{{ portfolio_exposure_rows|length }} factor{{ portfolio_exposure_rows|length|pluralize }}</span>
+        </div>
+      </summary>
+      <div class="collapse-body">
+        <div class="table-wrap">
+          <table data-sortable>
+            <tr><th>Factor</th><th>Exposure</th><th>Active vs SPY</th><th>Component variance</th><th>Marginal variance</th></tr>
+            {% for row in portfolio_exposure_rows %}
+              <tr>
+                <td>{{ row.factor }}</td>
+                <td>{{ row.exposure|floatformat:4 }}</td>
+                <td>{{ row.active_exposure|floatformat:4 }}</td>
+                <td>{{ row.component_risk|percentage_squared:3 }}</td>
+                <td>{{ row.marginal_risk|percentage_squared:3 }}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="5">No factor exposure vectors are available.</td></tr>
+            {% endfor %}
+          </table>
+        </div>
+      </div>
+    </details>
+  </article>
+{% endif %}
+
+<article class="collapse-panel">
+  <details data-collapse-key="portfolio-detail-optimization-history" open>
+    <summary>
+      <div class="row">
+        <div><h2>Optimization history</h2></div>
+        <span class="muted">{{ portfolio_scenarios|length }} scenario{{ portfolio_scenarios|length|pluralize }}</span>
+      </div>
+    </summary>
+    <div class="collapse-body">
+      <div class="table-wrap">
+        <table>
+          <tr><th>Scenario</th><th>Status</th><th>Objective</th><th>Vol</th><th>Turnover</th><th>Inspect</th></tr>
+          {% for scenario in portfolio_scenarios %}
+            <tr>
+              <td>{{ scenario.name }}</td>
+              <td>{{ scenario.status }}</td>
+              <td>{{ scenario.objective }}</td>
+              <td>{{ scenario.expected_volatility|percentage:2 }}</td>
+              <td>{{ scenario.turnover|percentage:1 }}</td>
+              <td><a href="{% url 'desk:portfolio_detail' portfolio_detail.id %}?scenario_id={{ scenario.id }}">Open</a></td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="6">No optimization scenarios for this portfolio.</td></tr>
+          {% endfor %}
+        </table>
+      </div>
+    </div>
+  </details>
+</article>

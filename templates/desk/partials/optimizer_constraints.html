@@ -1,0 +1,69 @@
+<details class="optimizer-advanced" open>
+  <summary>Portfolio controls and constraints</summary>
+  <div class="optimizer-control-grid" data-weight-constraints>
+    <label>Stock weight limits
+      <select name="weight_constraint_mode" data-weight-constraint-mode>
+        <option value="absolute">Absolute</option>
+        <option value="relative">Relative to current</option>
+      </select>
+    </label>
+    <label data-weight-min-label>Minimum weight (%)
+      <input name="min_weight" type="number" min="0" max="100" step=".1" value="0">
+    </label>
+    <label data-weight-max-label>Maximum weight (%)
+      <input name="max_weight" type="number" min="0" max="100" step=".1" value="15">
+    </label>
+    <label data-weight-cap-label hidden>Absolute cap (%)
+      <input name="max_weight_cap" type="number" min="0" max="100" step=".1" disabled>
+      <small>Optional hard ceiling on any one stock.</small>
+    </label>
+  </div>
+
+  <div class="optimizer-constraint-sections">
+    <section data-constraint-builder="factor">
+      <div class="optimizer-section-heading">
+        <div>
+          <h3>Factor constraints</h3>
+          <p>Add only the factors you want to constrain. Exposure bounds are beta units; relative bounds are versus SPY.</p>
+        </div>
+        <div class="optimizer-add-control">
+          <select data-add-factor-select aria-label="Choose factor constraint">
+            <option value="">Choose factor…</option>
+            {% for group in optimizer_constraint_factor_groups %}
+              <optgroup label="{{ group.family }}">
+                {% for factor in group.factors %}
+                  <option value="{{ factor.field_key }}" data-name="{{ factor.name }}" data-family="{{ group.family }}">{{ factor.name }}</option>
+                {% endfor %}
+              </optgroup>
+            {% endfor %}
+          </select>
+          <button type="button" class="secondary" data-add-factor>Add factor</button>
+        </div>
+      </div>
+      <div class="optimizer-dynamic-rows" data-factor-constraint-rows>
+        <p class="muted" data-empty-message>No factor constraints added.</p>
+      </div>
+    </section>
+
+    <section data-constraint-builder="sector">
+      <div class="optimizer-section-heading">
+        <div>
+          <h3>Sector constraints</h3>
+          <p>Add only sectors that need a portfolio-weight bound.{% if not optimizer_sector_options %} Choose a portfolio above to list the sectors it holds.{% endif %}</p>
+        </div>
+        <div class="optimizer-add-control">
+          <select data-add-sector-select aria-label="Choose sector constraint" {% if not optimizer_sector_options %}disabled{% endif %}>
+            <option value="">Choose sector…</option>
+            {% for sector in optimizer_sector_options %}
+              <option value="{{ forloop.counter }}" data-name="{{ sector }}">{{ sector }}</option>
+            {% endfor %}
+          </select>
+          <button type="button" class="secondary" data-add-sector {% if not optimizer_sector_options %}disabled{% endif %}>Add sector</button>
+        </div>
+      </div>
+      <div class="optimizer-dynamic-rows" data-sector-constraint-rows>
+        <p class="muted" data-empty-message>No sector constraints added.</p>
+      </div>
+    </section>
+  </div>
+</details>

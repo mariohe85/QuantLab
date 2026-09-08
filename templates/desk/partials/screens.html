@@ -1,0 +1,46 @@
+{% load optimizer_display %}
+<h1>Screens</h1>
+<p>Create, run, and convert factor screens into portfolios.</p>
+
+<article>
+  <h2>Create screen</h2>
+  <form method="post" action="{% url 'desk:screen_create' %}">{% csrf_token %}
+    <label>Name <input name="name" required></label>
+    <label>Model dataset <select name="factor_build_id">{% for item in factor_builds %}<option value="{{ item.id }}">{{ item.display_label }}</option>{% endfor %}</select></label>
+    <label>Model <select name="model_level"><option>base</option><option selected>base_sector</option></select></label>
+    <label>Top N <input type="number" name="top_n" min="10" max="50" value="20"></label>
+    <label>Factor weights JSON <textarea name="factor_weights">{"Momentum":0.6,"Quality":0.4}</textarea></label>
+    <label>Directions JSON <textarea name="directions">{"Momentum":1,"Quality":1}</textarea></label>
+    <label>Regime interactions JSON <textarea name="regime_interactions">{}</textarea></label>
+    <label>Filters JSON <textarea name="filters">{"coverage":{"min":0.7}}</textarea></label>
+    <button class="primary">Create screen</button>
+  </form>
+</article>
+
+<article>
+  <h2>Run screens</h2>
+  {% for item in screens %}
+    <div class="row">
+      <strong>{{ item.name }}</strong>
+      <form method="post" action="{% url 'desk:domain_job' 'screen_run' %}" hx-post="{% url 'desk:domain_job' 'screen_run' %}" hx-target="#screen-job">{% csrf_token %}
+        <input type="hidden" name="screen_id" value="{{ item.id }}">
+        <button>Preview/run</button>
+      </form>
+    </div>
+  {% endfor %}
+  <div id="screen-job"></div>
+</article>
+
+<article>
+  <h2>Latest run results</h2>
+  <div class="table-wrap">
+    <table>
+      <tr><th>Rank</th><th>Ticker</th><th>Pass</th><th>Score</th><th>Percentile</th></tr>
+      {% for item in screen_results %}
+        <tr><td>{{ item.rank }}</td><td>{{ item.security.ticker }}</td><td>{{ item.passed }}</td><td>{{ item.score|floatformat:3 }}</td><td>{{ item.percentile|percentage:1 }}</td></tr>
+      {% empty %}
+        <tr><td colspan="5">Run a screen to preview results.</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+</article>

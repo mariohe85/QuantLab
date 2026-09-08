@@ -1,0 +1,435 @@
+{% load optimizer_display %}
+<section class="workspace-heading">
+  <div>
+    <p class="eyebrow">V2 proxy factor research</p>
+    {% if factor_workspace_tab == "stock" %}
+      <h1>Stock Factor Analysis</h1>
+      <p>Diagnose one company across the nested V2 models and its stored history.</p>
+    {% elif factor_workspace_tab == "portfolio" %}
+      <h1>Portfolio Factor Analysis</h1>
+      <p>Inspect every holding and the portfolio's current weighted factor exposure.</p>
+    {% else %}
+      <h1>Factors</h1>
+      <p>Monitor the local V2 proxy universe, returns, coverage, and history.</p>
+    {% endif %}
+  </div>
+</section>
+
+{% if factor_workspace_tab == "portfolio" %}
+  <article class="control-bar">
+    <form method="get" action="{% url 'desk:page' page %}" class="inline-form">
+      <label>Model version
+        <select name="build_id">
+          {% for item in factor_builds %}
+            <option value="{{ item.id }}" {% if selected_factor_build and item.id == selected_factor_build.id %}selected{% endif %}>{{ item.display_label }} · {{ item.status }}</option>
+          {% empty %}
+            <option>No factor builds available</option>
+          {% endfor %}
+        </select>
+      </label>
+      <input type="hidden" name="portfolio_id" value="{{ selected_factor_portfolio.id }}">
+      <input type="hidden" name="model_level" value="{{ selected_model_level }}">
+      <button>Change build</button>
+    </form>
+  </article>
+{% endif %}
+
+{% if factor_workspace_tab == "universe" %}
+  <section class="section-heading">
+    <div><p class="eyebrow">Universe</p><h2>Factor return monitor</h2></div>
+    <p>Every factor is built locally from the selected adjusted-price snapshot.</p>
+  </section>
+
+  <form method="get" action="{% url 'desk:page' 'factors' %}" class="filter-strip">
+    {% if selected_factor_build %}<input type="hidden" name="build_id" value="{{ selected_factor_build.id }}">{% endif %}
+    <fieldset>
+      <legend>Families</legend>
+      {% for family in factor_families %}
+        <label class="check-pill"><input type="checkbox" name="family" value="{{ family }}" {% if family in selected_families %}checked{% endif %}> {{ family }}</label>
+      {% endfor %}
+    </fieldset>
+    <button class="primary">Apply view</button>
+    {% if selected_families %}<a class="button-link" href="?{% if selected_factor_build %}build_id={{ selected_factor_build.id }}{% endif %}">Clear</a>{% endif %}
+  </form>
+
+  <article class="collapse-panel">
+    <details data-collapse-key="factors-latest-panel" open>
+    <summary>
+      <div class="row">
+        <div><h2>Latest factor panel</h2><p>{{ factor_panel_rows|length }} factors, each at its own latest observation{% if factor_panel_dates|length > 1 %} ({{ factor_panel_dates|first }} to {{ factor_panel_dates|last }}){% elif factor_panel_dates %} ({{ factor_panel_dates|first }}){% endif %}</p></div>
+        <span class="muted">Select column headings to sort</span>
+      </div>
+    </summary>
+    <div class="collapse-body">
+    <div class="table-wrap">
+      <table data-sortable>
+        <thead><tr><th>Factor</th><th>Family</th><th>Coverage</th>{% for window in factor_panel_windows %}<th>{{ window }}d return</th><th>{{ window }}d z</th>{% endfor %}</tr></thead>
+        <tbody>
+        {% for row in factor_panel_rows %}
+          <tr>
+            <td>
+              <button type="button" class="factor-detail-link"
+                      data-factor-detail-url="{% url 'desk:factor_return_detail' selected_factor_build.id row.observation.factor.id %}"
+                      data-factor-name="{{ row.observation.factor.name }}">
+                {{ row.observation.factor.name }}
+              </button>
+            </td>
+            <td>{{ row.observation.factor.family }}</td>
+            <td>{{ row.observation.coverage|floatformat:2 }}</td>
+            {% for cell in row.cells %}
+              <td>{% if cell.return_percent is None %}—{% else %}{{ cell.return_percent|floatformat:2 }}%{% endif %}</td>
+              <td class="zscore-cell" data-zscore="{{ cell.zscore|default_if_none:'' }}">{% if cell.zscore is None %}—{% else %}{{ cell.zscore|floatformat:2 }}{% endif %}</td>
+            {% endfor %}
+          </tr>
+        {% empty %}
+          <tr><td colspan="{{ factor_panel_column_count }}"><div class="empty-state"><strong>No observations for this view</strong><span>Choose a completed build or clear the family filters.</span></div></td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    </div>
+    </details>
+  </article>
+
+  {% include "desk/partials/factor_return_popup.html" %}
+
+{% elif factor_workspace_tab == "stock" %}
+  <section class="section-heading"><div><p class="eyebrow">Stock</p><h2>Company factor diagnosis</h2></div><p>Only fitted tickers in the selected build are searchable.</p></section>
+  <article>
+    <form method="get" action="{% url 'desk:page' 'stock' %}" class="inline-form">
+      {% if selected_factor_build %}<input type="hidden" name="build_id" value="{{ selected_factor_build.id }}">{% endif %}
+      <input type="hidden" name="model_level" value="{{ selected_model_level }}">
+      <div class="combobox" data-combobox>
+        <label for="stock-ticker">Company or ticker</label>
+        <input id="stock-ticker" name="ticker" value="{{ ticker }}" placeholder="Search AAPL or Apple" autocomplete="off" required
+               role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="stock-ticker-options" data-combobox-input>
+        <div class="combobox-panel" id="stock-ticker-options" role="listbox" hidden data-combobox-panel>
+          {% for item in stock_options %}
+            <button type="button" role="option" data-combobox-option data-value="{{ item.ticker }}" data-search="{{ item.ticker|lower }} {{ item.name|lower }}">
+              <strong>{{ item.ticker }}</strong><span>{{ item.name|default:"—" }}</span>
+            </button>
+          {% endfor %}
+          <p class="combobox-empty" hidden data-combobox-empty>No matching company in this build.</p>
+        </div>
+      </div>
+      <button class="primary">Analyze stock</button>
+    </form>
+    {% if selected_factor_build %}
+      <details>
+        <summary>Update S&amp;P 500 decompositions</summary>
+        <form method="post" action="{% url 'desk:domain_job' 'monthly_exposures' %}" hx-post="{% url 'desk:domain_job' 'monthly_exposures' %}" hx-target="#stock-model-job" class="inline-form">{% csrf_token %}
+          <input type="hidden" name="factor_build_id" value="{{ selected_factor_build.id }}">
+          <input type="hidden" name="levels" value="base,base_sector,base_sector_industry,all_factors">
+          <input type="hidden" name="update_mode" value="backfill">
+          <label>Trailing trading days <input type="number" name="trailing_days" value="756" min="126"></label>
+          <label>Minimum trading days <input type="number" name="minimum_observations" value="252" min="60"></label>
+          <label>Month-ends <input type="number" name="max_months" value="1" min="1"></label>
+          <label>Top N by market cap <input type="number" name="top_n_by_market_cap" min="1" max="503" placeholder="all"></label>
+          <label>Parallel workers <input type="number" name="workers" min="1" placeholder="auto"></label>
+          <button>Update all four model levels</button>
+        </form>
+        <div id="stock-model-job"></div>
+      </details>
+    {% endif %}
+  </article>
+
+  <div class="model-tabs" aria-label="Stock model">
+    {% for level in model_levels %}
+      {% if level.available %}
+        <a href="?build_id={{ selected_factor_build.id }}&amp;ticker={{ ticker|urlencode }}&amp;model_level={{ level.key }}" class="{% if level.key == selected_model_level %}active{% endif %}">
+          <strong>{{ level.label }}</strong><span>{{ level.factor_count }} factors</span>
+        </a>
+      {% else %}
+        <span class="disabled" title="No fits were produced for this model in the selected build"><strong>{{ level.label }}</strong><span>Unavailable</span></span>
+      {% endif %}
+    {% endfor %}
+  </div>
+
+  {% if selected_stock_fit %}
+    <div class="metric-grid">
+      <article><span>Adjusted R²</span><strong>{{ selected_stock_fit.adjusted_r2|floatformat:3 }}</strong></article>
+      <article><span>Residual volatility</span><strong>{{ selected_stock_fit.residual_volatility|percentage:2 }}</strong></article>
+      <article><span>Observations</span><strong>{{ selected_stock_fit.observation_count }}</strong></article>
+      <article><span>Coverage ratio</span><strong>{{ selected_stock_fit.coverage|floatformat:2 }}</strong></article>
+      <article><span>Selected / design</span><strong>{{ selected_stock_fit.active_factor_count }} / {{ selected_stock_fit.design_factor_count }}</strong></article>
+    </div>
+    <div class="grid two">
+      <article class="collapse-panel">
+        <details data-collapse-key="stock-exposure-chart" open>
+          <summary><h2>Factor exposures</h2></summary>
+          <div class="collapse-body">
+            <div class="chart" data-chart="stock-exposure" data-title="{{ ticker }} factor betas"></div>
+          </div>
+        </details>
+      </article>
+      <article class="collapse-panel">
+        <details data-collapse-key="stock-contribution-chart" open>
+          <summary>
+            <div><h2>Latest return contribution</h2><p>Beta × latest stored factor return; this is not full stock-return attribution.</p></div>
+          </summary>
+          <div class="collapse-body">
+            <div class="chart" data-chart="stock-contribution" data-title="{{ ticker }} factor contribution" data-value-format="percent"></div>
+          </div>
+        </details>
+      </article>
+    </div>
+    <div hidden>
+      {% for row in stock_exposure_rows %}
+        <span data-stock-factor data-name="{{ row.factor }}" data-value="{{ row.beta }}"></span>
+        {% if row.contribution is not None %}<span data-stock-contribution data-name="{{ row.factor }}" data-value="{{ row.contribution }}"></span>{% endif %}
+      {% endfor %}
+    </div>
+    <article class="collapse-panel">
+      <details data-collapse-key="stock-hac-inference" open>
+      <summary>
+        <div class="row"><div><h2>Exposure and HAC inference</h2></div><span class="muted">{{ stock_exposure_rows|length }} exposure{{ stock_exposure_rows|length|pluralize }}</span></div>
+      </summary>
+      <div class="collapse-body">
+      <div class="table-wrap"><table data-sortable>
+        <thead><tr><th>Factor</th><th>Beta</th><th>t-stat</th><th>p-value</th><th>95% confidence interval</th><th>Latest daily contribution</th></tr></thead>
+        <tbody>{% for row in stock_exposure_rows %}
+          <tr><td>{{ row.factor }}</td><td>{{ row.beta|floatformat:4 }}</td><td>{{ row.t_stat|floatformat:3 }}</td><td>{{ row.p_value|floatformat:4 }}</td><td>[{{ row.confidence_low|floatformat:4 }}, {{ row.confidence_high|floatformat:4 }}]</td><td>{{ row.contribution|percentage:3 }}</td></tr>
+        {% empty %}<tr><td colspan="6">The fit has no selected exposures.</td></tr>{% endfor %}</tbody>
+      </table></div>
+      </div>
+      </details>
+    </article>
+
+    <section class="section-heading"><div><p class="eyebrow">History</p><h2>Monthly model history</h2></div><p>{{ stock_history_rows|length }} month-end fit{{ stock_history_rows|length|pluralize }} stored for {{ ticker }} at this model level.</p></section>
+    {% if stock_history_rows|length > 1 %}
+      <div class="grid two">
+        <article class="collapse-panel">
+          <details data-collapse-key="stock-r2-history" open>
+          <summary><h2>Fit quality over time</h2></summary>
+          <div class="collapse-body">
+          <div class="chart" data-chart="stock-r2-history" data-title="{{ ticker }} adjusted R²"></div>
+          </div>
+          </details>
+        </article>
+        <article class="collapse-panel">
+          <details data-collapse-key="stock-beta-history" open>
+          <summary><h2>Beta over time</h2></summary>
+          <div class="collapse-body">
+          <form method="get" action="{% url 'desk:page' 'stock' %}" class="inline-form">
+            {% if selected_factor_build %}<input type="hidden" name="build_id" value="{{ selected_factor_build.id }}">{% endif %}
+            <input type="hidden" name="ticker" value="{{ ticker }}">
+            <input type="hidden" name="model_level" value="{{ selected_model_level }}">
+            <label>Factor
+              <select name="beta_factor" onchange="this.form.submit()">
+                {% for name in stock_beta_factor_options %}
+                  <option value="{{ name }}" {% if name == selected_stock_beta_factor %}selected{% endif %}>{{ name }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <button>Trace factor</button>
+          </form>
+          <div class="chart" data-chart="stock-beta-history" data-title="{{ ticker }} {{ selected_stock_beta_factor }} beta"></div>
+          </div>
+          </details>
+        </article>
+      </div>
+      <div hidden>
+        {% for row in stock_history_rows %}
+          <span data-stock-r2-history data-name="{{ row.as_of }}" data-value="{{ row.adjusted_r2 }}"></span>
+        {% endfor %}
+        {% for row in stock_beta_history_rows %}
+          <span data-stock-beta-history data-name="{{ row.as_of }}" data-value="{{ row.beta }}"></span>
+        {% endfor %}
+      </div>
+    {% endif %}
+    <article class="collapse-panel">
+      <details data-collapse-key="stock-fit-history-table" open>
+      <summary>
+        <div class="row"><div><h2>Fit history by month-end</h2></div><span class="muted">{{ stock_history_rows|length }} month-end{{ stock_history_rows|length|pluralize }}</span></div>
+      </summary>
+      <div class="collapse-body">
+      <div class="table-wrap"><table data-sortable>
+        <thead><tr><th>As of</th><th>Period status</th><th>Adjusted R²</th><th>Daily alpha</th><th>Residual vol</th><th>Selected / design</th><th>Observations</th><th>Coverage</th></tr></thead>
+        <tbody>{% for row in stock_history_rows reversed %}
+          <tr>
+            <td>{{ row.as_of }}</td>
+            <td>{% if row.is_provisional %}<span class="status status-running">Current</span>{% else %}<span class="status status-succeeded">Final</span>{% endif %}</td>
+            <td>{{ row.adjusted_r2|floatformat:3 }}</td>
+            <td>{{ row.alpha|percentage:3 }}</td>
+            <td>{{ row.residual_volatility|percentage:2 }}</td>
+            <td>{{ row.active_factor_count }} / {{ row.design_factor_count }}</td>
+            <td>{{ row.observation_count }}</td>
+            <td>{{ row.coverage|floatformat:2 }}</td>
+          </tr>
+        {% empty %}<tr><td colspan="8">No stored fits.</td></tr>{% endfor %}</tbody>
+      </table></div>
+      {% if stock_history_rows|length == 1 %}
+        <p class="empty-state"><strong>Only the latest period is stored</strong><span>Run a decomposition backfill with a higher Month-ends value to extend this company's history.</span></p>
+      {% endif %}
+      </div>
+      </details>
+    </article>
+  {% else %}
+    <article><div class="empty-state"><strong>{% if ticker %}No {{ selected_model_level }} fit for {{ ticker }}{% else %}Choose a stock to begin{% endif %}</strong><span>Unavailable model levels stay disabled rather than falling back silently.</span></div></article>
+  {% endif %}
+
+{% else %}
+  <section class="section-heading"><div><p class="eyebrow">Portfolio</p><h2>Weighted factor analysis</h2></div><p>Analyze a saved portfolio or paste temporary weighted holdings.</p></section>
+  <div class="grid two">
+    <article class="collapse-panel">
+      <details data-collapse-key="portfolio-saved-picker" open>
+      <summary><h2>Saved portfolio</h2></summary>
+      <div class="collapse-body">
+      <form method="get" action="{% url 'desk:page' 'portfolio' %}">
+        <input type="hidden" name="portfolio_tab" value="{{ portfolio_workspace_tab }}">
+        {% if selected_factor_build %}<input type="hidden" name="build_id" value="{{ selected_factor_build.id }}">{% endif %}
+        <input type="hidden" name="model_level" value="{{ selected_model_level }}">
+        <label>Portfolio
+          <select name="portfolio_id"><option value="">Choose a portfolio</option>{% for item in factor_portfolios %}<option value="{{ item.id }}" {% if selected_factor_portfolio.id == item.id %}selected{% endif %}>{{ item.name }} · {{ item.source }}</option>{% endfor %}</select>
+        </label>
+        <button class="primary">Analyze saved portfolio</button>
+      </form>
+      </div>
+      </details>
+    </article>
+    <article class="collapse-panel">
+      <details data-collapse-key="portfolio-temporary-holdings" open>
+      <summary><h2>Temporary holdings</h2></summary>
+      <div class="collapse-body">
+      <form method="post" action="{% url 'desk:page' 'portfolio' %}?portfolio_tab=exposure{% if selected_factor_build %}&amp;build_id={{ selected_factor_build.id }}{% endif %}&amp;model_level={{ selected_model_level }}">{% csrf_token %}
+        <label>CSV holdings (weight in %)<textarea name="holdings" placeholder="ticker,weight&#10;AAPL,60&#10;MSFT,40">{{ manual_holdings }}</textarea></label>
+        <button>Analyze without saving</button>
+      </form>
+      </div>
+      </details>
+    </article>
+  </div>
+
+  <nav class="workspace-tabs portfolio-subtabs" aria-label="Portfolio analysis views">
+    <a href="?portfolio_tab=holdings{% if selected_factor_build %}&amp;build_id={{ selected_factor_build.id }}{% endif %}{% if selected_factor_portfolio %}&amp;portfolio_id={{ selected_factor_portfolio.id }}{% endif %}&amp;model_level={{ selected_model_level }}" class="{% if portfolio_workspace_tab == 'holdings' %}active{% endif %}">Holdings</a>
+    <a href="?portfolio_tab=exposure{% if selected_factor_build %}&amp;build_id={{ selected_factor_build.id }}{% endif %}{% if selected_factor_portfolio %}&amp;portfolio_id={{ selected_factor_portfolio.id }}{% endif %}&amp;model_level={{ selected_model_level }}" class="{% if portfolio_workspace_tab == 'exposure' %}active{% endif %}">Current Portfolio Exposure</a>
+    <a href="?portfolio_tab=performance{% if selected_factor_build %}&amp;build_id={{ selected_factor_build.id }}{% endif %}{% if selected_factor_portfolio %}&amp;portfolio_id={{ selected_factor_portfolio.id }}{% endif %}&amp;model_level={{ selected_model_level }}" class="{% if portfolio_workspace_tab == 'performance' %}active{% endif %}">Historical Performance</a>
+  </nav>
+
+  <div class="model-tabs" aria-label="Portfolio model">
+    {% for level in model_levels %}
+      {% if level.available %}
+        <a href="?portfolio_tab={{ portfolio_workspace_tab }}&amp;build_id={{ selected_factor_build.id }}{% if selected_factor_portfolio %}&amp;portfolio_id={{ selected_factor_portfolio.id }}{% endif %}&amp;model_level={{ level.key }}" class="{% if level.key == selected_model_level %}active{% endif %}"><strong>{{ level.label }}</strong><span>{{ level.factor_count }} factors</span></a>
+      {% else %}
+        <span class="disabled"><strong>{{ level.label }}</strong><span>Unavailable</span></span>
+      {% endif %}
+    {% endfor %}
+  </div>
+
+  {% if portfolio_analysis_error %}<div class="inline-alert">{{ portfolio_analysis_error }}</div>{% endif %}
+  {% if portfolio_workspace_tab == "performance" %}
+    {% if portfolio_history %}
+      {% include "desk/partials/history_performance.html" with history=portfolio_history collapse_prefix="portfolio-history" %}
+    {% elif portfolio_history_error %}
+      <div class="inline-alert"><strong>Historical performance unavailable</strong><span>{{ portfolio_history_error }}</span></div>
+    {% else %}
+      <article><div class="empty-state"><strong>Select a saved portfolio</strong><span>Historical performance is available for saved screen and manual portfolios.</span></div></article>
+    {% endif %}
+  {% elif factor_portfolio_holdings %}
+    {% if portfolio_workspace_tab == "holdings" %}
+      <div class="metric-grid">
+        <article><span>Portfolio holdings</span><strong>{{ factor_portfolio_holdings|length }}</strong></article>
+        <article><span>Modeled holdings</span><strong>{{ portfolio_modeled_holdings }}</strong></article>
+        <article><span>Modeled weight ratio</span><strong>{{ factor_portfolio_coverage|percentage:1 }}</strong></article>
+        <article><span>Weighted adjusted R²</span><strong>{{ portfolio_weighted_adjusted_r2|floatformat:3|default:"—" }}</strong></article>
+      </div>
+      {% if portfolio_better_builds %}
+        <div class="inline-alert">
+          {{ selected_factor_build.display_label }} models {{ portfolio_modeled_holdings }} of {{ factor_portfolio_holdings|length }} holdings at {{ selected_model_level }}.
+          {% for item in portfolio_better_builds %}
+            <a href="?portfolio_tab=holdings&amp;build_id={{ item.build.id }}{% if selected_factor_portfolio %}&amp;portfolio_id={{ selected_factor_portfolio.id }}{% endif %}&amp;model_level={{ selected_model_level }}">Use {{ item.build.display_label }} ({{ item.modeled }} modeled)</a>{% if not forloop.last %} · {% endif %}
+          {% endfor %}
+        </div>
+      {% endif %}
+      <article class="collapse-panel">
+        <details data-collapse-key="portfolio-exposure-matrix" open>
+        <summary>
+          <div class="row">
+            <div><h2>Holding factor exposure matrix</h2><p>Every {{ selected_model_level }} design factor as of each holding's latest stored fit. Zero is a factor ElasticNet omitted; a dash means the holding has no fit in this build.</p></div>
+            <span class="muted">{{ portfolio_matrix_factors|length }} design factors</span>
+          </div>
+        </summary>
+        <div class="collapse-body">
+        <div class="table-wrap portfolio-holdings-matrix">
+          <table data-sortable>
+            <thead><tr><th>Holding</th><th>Weight</th><th>As of</th><th>Adjusted R²</th><th>Coverage</th>{% for factor in portfolio_matrix_factors %}<th>{{ factor }}</th>{% endfor %}</tr></thead>
+            <tbody>
+              {% for row in factor_portfolio_holdings %}
+                <tr>
+                  <td><a href="{% url 'desk:page' 'stock' %}?build_id={{ selected_factor_build.id }}&amp;ticker={{ row.security.ticker }}&amp;model_level={{ selected_model_level }}"><strong>{{ row.security.ticker }}</strong><br><small>{{ row.security.name|default:"—" }}</small></a></td>
+                  <td>{{ row.weight|percentage:2 }}</td>
+                  <td>{% if row.fit %}{{ row.fit.as_of }}{% if row.fit.is_provisional %}<br><small>Current period</small>{% endif %}{% else %}No fit{% endif %}</td>
+                  <td>{% if row.fit %}{{ row.fit.adjusted_r2|floatformat:3 }}{% else %}—{% endif %}</td>
+                  <td>{% if row.fit %}{{ row.fit.coverage|floatformat:2 }}{% else %}—{% endif %}</td>
+                  {% for value in row.matrix_values %}<td class="zscore-cell" data-zscore="{{ value.beta|default_if_none:'' }}">{% if value.beta is None %}—{% else %}{{ value.beta|floatformat:3 }}{% endif %}</td>{% endfor %}
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        </div>
+        </details>
+      </article>
+    {% else %}
+    <div class="metric-grid">
+      <article><span>Modeled weight ratio</span><strong>{{ factor_portfolio_coverage|percentage:1 }}</strong></article>
+      <article>
+        <span>Specific risk</span>
+        <strong>{% if factor_portfolio_specific_volatility is not None %}{{ factor_portfolio_specific_volatility|percentage:1 }}{% else %}Unavailable{% endif %}</strong>
+        {% if factor_portfolio_specific_risk_share is not None %}<small>{{ factor_portfolio_specific_risk_share|floatformat:1 }}% of total variance</small>{% endif %}
+      </article>
+      <article>
+        <span>Factor risk</span>
+        <strong>{% if factor_portfolio_factor_risk is not None %}{{ factor_portfolio_factor_risk|percentage:1 }}{% else %}Unavailable{% endif %}</strong>
+        {% if factor_portfolio_factor_risk_share is not None %}<small>{{ factor_portfolio_factor_risk_share|floatformat:1 }}% of total variance</small>{% endif %}
+      </article>
+      <article>
+        <span>Total risk</span>
+        <strong>{% if factor_portfolio_total_risk is not None %}{{ factor_portfolio_total_risk|percentage:1 }}{% else %}Unavailable{% endif %}</strong>
+        <small>Annualized</small>
+      </article>
+    </div>
+    <div class="grid two">
+      <article class="collapse-panel">
+        <details data-collapse-key="portfolio-tilts-chart" open>
+          <summary><h2>Weighted factor tilts</h2></summary>
+          <div class="collapse-body">
+            <div class="chart" data-chart="portfolio-exposure" data-title="Weighted portfolio exposures"></div>
+          </div>
+        </details>
+      </article>
+      <article class="collapse-panel">
+        <details data-collapse-key="portfolio-risk-chart" open>
+          <summary><h2>Factor risk contribution</h2></summary>
+          <div class="collapse-body">
+            {% if factor_portfolio_risk %}
+              <div class="chart" data-chart="portfolio-contribution" data-title="Live component variance" data-value-format="percent-squared"></div>
+            {% else %}
+              <div class="empty-state"><strong>Risk decomposition unavailable</strong><span>At least two stored factor-return dates and matching stock fits are required.</span></div>
+            {% endif %}
+          </div>
+        </details>
+      </article>
+    </div>
+    <div hidden>
+      {% for row in factor_portfolio_exposures %}<span data-portfolio-exposure data-name="{{ row.factor }}" data-value="{{ row.exposure }}"></span>{% endfor %}
+      {% if factor_portfolio_risk %}{% for factor, value in factor_portfolio_risk.component_risk.items %}<span data-portfolio-contribution data-name="{{ factor }}" data-value="{{ value }}"></span>{% endfor %}{% endif %}
+    </div>
+    <article class="collapse-panel">
+      <details data-collapse-key="portfolio-exposure-table" open>
+      <summary>
+        <div class="row"><div><h2>Portfolio exposure table</h2></div><span class="muted">{{ factor_portfolio_exposures|length }} factor{{ factor_portfolio_exposures|length|pluralize }}</span></div>
+      </summary>
+      <div class="collapse-body">
+      <div class="table-wrap"><table data-sortable><thead><tr><th>Factor</th><th>Weighted exposure</th></tr></thead><tbody>
+        {% for row in factor_portfolio_exposures %}<tr><td>{{ row.factor }}</td><td>{{ row.exposure|floatformat:4 }}</td></tr>{% empty %}<tr><td colspan="2">No modeled exposures.</td></tr>{% endfor %}
+      </tbody></table></div>
+      {% if factor_portfolio_coverage < 1 %}<p class="data-note">Metrics include only holdings with an exact {{ selected_model_level }} fit. Missing weight is not redistributed.</p>{% endif %}
+      </div>
+      </details>
+    </article>
+    {% endif %}
+  {% else %}
+    <article><div class="empty-state"><strong>Select or enter a portfolio</strong><span>Weighted exposures are calculated from exact fits in the selected build and model.</span></div></article>
+  {% endif %}
+{% endif %}

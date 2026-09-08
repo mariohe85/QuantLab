@@ -1,0 +1,15 @@
+<div class="job" id="job-{{ job.id }}"
+  {% if job.status == "queued" or job.status == "running" %}
+  hx-get="{% url 'desk:job_status' job.id %}{% if reload_on_success %}?reload_on_success=1{% endif %}" hx-trigger="every 1s" hx-swap="outerHTML"
+  {% endif %}>
+  <div class="row"><strong>{{ job.kind }} #{{ job.id }}</strong><span>{{ job.status }} · {{ job.progress }}%</span></div>
+  <progress max="100" value="{{ job.progress }}"></progress>
+  {% if job.stage %}<p>{{ job.stage }}</p>{% endif %}
+  {% if job.error %}<p class="error">{{ job.error }}</p>{% endif %}
+  {% if job.result %}<dl>{% for key, value in job.result.items %}<dt>{{ key }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>{% endif %}
+  {% if job.status == "queued" or job.status == "running" or job.status == "cancel_requested" %}
+    <form method="post" action="{% url 'desk:job_cancel' job.id %}">{% csrf_token %}<button>Cancel job</button></form>
+  {% endif %}
+  {% if job.status == "succeeded" %}<button type="button" onclick="{% if job_success_url %}window.location.assign('{{ job_success_url|escapejs }}'){% else %}window.location.reload(){% endif %}">{% if job_success_url %}Open results{% else %}Refresh page results{% endif %}</button>{% endif %}
+  {% if reload_on_success and job.status == "succeeded" %}<script>{% if job_success_url %}window.location.assign("{{ job_success_url|escapejs }}");{% else %}window.location.reload();{% endif %}</script>{% endif %}
+</div>

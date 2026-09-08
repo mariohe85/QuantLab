@@ -1,0 +1,459 @@
+{% load optimizer_display %}
+<section class="workspace-heading optimizer-heading">
+  <div>
+    <p class="eyebrow">Portfolio construction</p>
+    <h1>Portfolio Optimizer</h1>
+    <p>Build a constrained portfolio from historical estimates.</p>
+  </div>
+</section>
+
+<div class="optimizer-layout">
+  <section class="optimizer-workbench">
+      <article class="optimizer-builder collapse-panel">
+        <details data-collapse-key="optimizer-builder-standard" {% if not selected_optimization_study %}open data-collapse-force-open{% endif %}>
+        <summary>
+          <div class="section-heading optimizer-builder-heading">
+            <div><p class="eyebrow">Standard optimization</p><h2>Set objective, forecasts, and guardrails</h2><p>Use the factor covariance model with explicit portfolio and exposure constraints.</p></div>
+            <span class="status status-succeeded">Constrained</span>
+          </div>
+        </summary>
+        <div class="collapse-body">
+        <form method="post" action="{% url 'desk:domain_job' 'optimization' %}" hx-post="{% url 'desk:domain_job' 'optimization' %}" hx-target="#optimizer-job" class="optimizer-form">{% csrf_token %}
+          <div class="optimizer-basics">
+            <label>Study name <input name="name" placeholder="Core minimum variance" required></label>
+            <label>Portfolio
+              <select name="portfolio_id" required><option value="">Choose portfolio</option>{% for item in portfolios %}<option value="{{ item.id }}" {% if item.id|stringformat:"s" == selected_optimizer_portfolio_id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select>
+            </label>
+            <label>Model dataset
+              <select name="factor_build_id" required><option value="">Choose model dataset</option>{% for item in factor_builds %}<option value="{{ item.id }}" {% if item.id|stringformat:"s" == selected_optimizer_build_id %}selected{% endif %}>{{ item.display_label }}</option>{% endfor %}</select>
+            </label>
+            <label>Model
+              <select name="model_level" required>{% for level in optimizer_model_levels %}<option value="{{ level.key }}" {% if level.key == selected_optimizer_model_level %}selected{% endif %} {% if not level.available %}disabled{% endif %}>{{ level.label }}{% if not level.available %} · unavailable{% endif %}</option>{% endfor %}</select>
+            </label>
+          </div>
+          <div class="optimizer-control-grid">
+            <label>Objective
+              <select name="objective">
+                <option value="min_variance">Minimum variance</option>
+                <option value="max_return">Maximum return</option>
+                <option value="max_sharpe">Maximum Sharpe ratio</option>
+                <option value="mean_variance">Maximum return minus ½ risk</option>
+              </select>
+            </label>
+            <label>Expected returns
+              <select name="expected_return_model" data-expected-return-model>
+                <option value="">Not used</option>
+                <option value="equal_sharpe">Equal Sharpe (vol × k / max diversification)</option>
+                <option value="factor_premium">Factor implied (beta × premium)</option>
+                <option value="historical_shrinkage">Historical shrinkage</option>
+                <option value="user_supplied">User supplied</option>
+              </select>
+            </label>
+            <label data-risk-aversion-field hidden>Risk weight <input name="risk_aversion" type="number" min="0" step=".1" value="1"><small>Maximizes expected return − (weight ÷ 2) × variance. Default 1 is return − ½ variance.</small></label>
+            <label>Risk-free rate (%) <input name="risk_free_rate" type="number" step=".1" value="4"><small>Fallback only. Runs use the 13-week bill yield of the as-of date when rate history is loaded.</small></label>
+            <label>Lookback (observations) <input name="lookback" type="number" min="126" max="2520" step="1" value="756"></label>
+          </div>
+          <section class="optimizer-constraint-sections" data-equal-sharpe-panel hidden>
+            <div class="optimizer-section-heading">
+              <div>
+                <h3>Equal Sharpe prior</h3>
+                <p>Every name is assumed to earn the same Sharpe ratio: expected excess return = k × predicted volatility from the covariance matrix. Historical means are ignored. For Maximum Sharpe, k cancels and the solve is the Maximum Diversification Portfolio w ∝ Σ⁻¹σ.</p>
+              </div>
+            </div>
+            <label>Common Sharpe (k) <input name="common_sharpe" type="number" min="0.01" step="any" value="0.5"><small>Display-only for Maximum Sharpe. It does change Maximum return and return-minus-risk, which then rank names by volatility.</small></label>
+          </section>
+          <section class="optimizer-constraint-sections" data-factor-premium-panel hidden>
+            <div class="optimizer-section-heading">
+              <div>
+                <h3>Annual factor premiums</h3>
+                <p>Expected stock return = risk-free rate + beta × premium; regression alpha is excluded. Each premium is a prior: every run blends it toward the trailing factor mean in proportion to how precisely that mean is measured, so backtest months re-estimate from data available at the time.</p>
+              </div>
+              <div class="optimizer-add-control">
+                <select data-add-premium-select aria-label="Choose factor premium">
+                  <option value="">Choose factor…</option>
+                  {% for group in optimizer_constraint_factor_groups %}
+                    <optgroup label="{{ group.family }}">
+                      {% for factor in group.factors %}
+                        <option value="{{ factor.field_key }}" data-name="{{ factor.name }}" {% if factor.field_key in optimizer_default_premium_keys %}disabled{% endif %}>{{ factor.name }}</option>
+                      {% endfor %}
+                    </optgroup>
+                  {% endfor %}
+                </select>
+                <button type="button" class="secondary" data-add-premium>Add factor</button>
+              </div>
+            </div>
+            <div class="optimizer-dynamic-rows" data-factor-premium-rows>
+              <p class="muted" data-empty-message {% if optimizer_default_premiums %}hidden{% endif %}>No factor premiums added.</p>
+              {% for row in optimizer_default_premiums %}
+                <div class="optimizer-premium-row" data-constraint-key="{{ row.factor.field_key }}">
+                  <strong>{{ row.factor.name }}</strong>
+                  <label>Prior premium (%) <input type="number" name="factor_premium_{{ row.factor.field_key }}" step=".1" value="{{ row.premium }}"></label>
+                  <button type="button" class="danger-link" data-remove-row aria-label="Remove factor premium">Remove</button>
+                </div>
+              {% endfor %}
+            </div>
+            <label class="optimizer-inline-check"><input type="checkbox" name="shrink_factor_betas"> Reliability-shrink noisy stock betas toward zero</label>
+          </section>
+          <details class="optimizer-advanced" data-expected-returns-panel>
+            <summary>Advanced expected returns</summary>
+            <label>User-supplied expected returns JSON
+              <textarea name="expected_returns" spellcheck="false" placeholder='{"AAPL": 8, "MSFT": 7}'>{}</textarea>
+              <small>Required for every holding when “User supplied” is selected. Values are annualized percentages.</small>
+            </label>
+          </details>
+          {% include "desk/partials/optimizer_constraints.html" %}
+          <div class="optimizer-submit"><button class="primary">Queue standard optimization</button><span>The job runs in the background; results appear below when complete.</span></div>
+        </form>
+        </div>
+        </details>
+      </article>
+    <div id="optimizer-job" class="optimizer-job" aria-live="polite"></div>
+  </section>
+</div>
+
+{% if selected_optimization_study %}
+  <section class="section-heading">
+    <div><p class="eyebrow">Study results</p><h2>{{ selected_optimization_study.name }}</h2><p>Inspect the settings, constraints, and holdings behind this run. This view is read-only; it never changes the source portfolio.</p></div>
+    <div class="optimizer-results-actions">
+      <span class="status status-{{ selected_optimization_study.status }}">{{ selected_optimization_study.status }}</span>
+    </div>
+  </section>
+{% endif %}
+
+{% if selected_scenario %}
+  <div class="metric-grid optimizer-metrics">
+    <article><span>Expected return</span><strong>{{ selected_scenario.expected_return|percentage:2 }}</strong></article>
+    <article><span>Expected volatility</span><strong>{{ selected_scenario.expected_volatility|percentage:2 }}</strong></article>
+    <article><span>Sharpe ratio</span><strong>{{ selected_scenario|sharpe_ratio }}</strong></article>
+    <article><span>Turnover</span><strong>{{ selected_scenario.turnover|percentage:1 }}</strong></article>
+    <article><span>Factor risk</span><strong>{{ selected_scenario.factor_variance|variance_volatility:2 }}</strong></article>
+    <article><span>Stock-specific risk</span><strong>{{ selected_scenario.specific_variance|variance_volatility:2 }}</strong></article>
+  </div>
+  {% if optimizer_comparison_rows %}
+    <article class="collapse-panel">
+      <details data-collapse-key="optimizer-comparison" open>
+      <summary>
+        <div class="row">
+          <div><h2>Original versus optimized</h2><p>Model estimates at the study date using the same covariance and return inputs as the solver. These are not realized performance.</p></div>
+        </div>
+      </summary>
+      <div class="collapse-body">
+      <div class="table-wrap compact-table">
+        <table>
+          <thead><tr><th>Metric</th><th>Original</th><th>Optimized</th><th>Change</th></tr></thead>
+          <tbody>
+            {% for row in optimizer_comparison_rows %}
+              <tr>
+                <td>{{ row.label }}</td>
+                <td>{{ row.original|percentage:2 }}</td>
+                <td>{{ row.optimized|percentage:2 }}</td>
+                <td>{{ row.change|signed_percentage:2 }} · {{ row.change|signed_bps }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      </div>
+      </details>
+    </article>
+  {% endif %}
+  <article class="collapse-panel">
+    <details data-collapse-key="optimizer-holdings" open>
+    <summary>
+      <div class="row"><div><h2>{{ selected_scenario.name }} holdings</h2><p>Original and optimized allocations with forecast and total-risk contribution.</p></div><span class="muted">{{ selected_scenario_rows|length }} holdings</span></div>
+    </summary>
+    <div class="collapse-body">
+    <div class="table-wrap optimizer-holdings-table">
+      <table data-sortable>
+        <thead><tr><th>Ticker</th><th>Original weight</th><th>Optimized weight</th><th>Trade</th><th>Expected return</th><th>Marginal risk</th><th>Component risk</th></tr></thead>
+        <tbody>{% for row in selected_scenario_rows %}
+          <tr><td><strong>{{ row.holding.security.ticker }}</strong></td><td>{{ row.holding.original_weight|percentage:2 }}</td><td>{{ row.holding.optimized_weight|percentage:2 }}</td><td class="{% if row.trade > 0 %}optimizer-positive{% elif row.trade < 0 %}optimizer-negative{% endif %}">{{ row.trade|percentage:2 }}</td><td>{{ row.holding.expected_return|percentage:2 }}</td><td>{{ row.holding.marginal_risk|percentage:2 }}</td><td>{{ row.holding.component_risk|percentage:2 }}</td></tr>
+        {% empty %}<tr><td colspan="7">No holding detail is available for this variant.</td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+    </div>
+    </details>
+  </article>
+  <div class="grid two optimizer-result-grid">
+    <article class="collapse-panel">
+      <details data-collapse-key="optimizer-sectors" open>
+      <summary>
+        <div class="row"><div><h2>Sector weights</h2><p>Portfolio weight per sector against the bound the solver was given. Sector bounds limit weight, not factor beta.</p></div><span class="status status-{{ selected_scenario.status }}">{{ selected_scenario.status }}</span></div>
+      </summary>
+      <div class="collapse-body">
+      <div class="table-wrap compact-table">
+        <table data-sortable>
+          <thead><tr><th>Sector</th><th>Original</th><th>Optimized</th><th>Change</th><th>Bound</th></tr></thead>
+          <tbody>
+            {% for row in optimizer_sector_rows %}
+              <tr>
+                <td>{{ row.sector }}</td>
+                <td>{{ row.original|percentage:2 }}</td>
+                <td><strong>{{ row.optimized|percentage:2 }}</strong></td>
+                <td class="{% if row.change > 0 %}optimizer-positive{% elif row.change < 0 %}optimizer-negative{% endif %}">{{ row.change|signed_percentage:2 }}</td>
+                <td>{% if row.bound %}{{ row.bound }} <span class="optimizer-bound-flag {% if row.within %}optimizer-bound-ok{% else %}optimizer-bound-out{% endif %}">{% if row.within %}within{% else %}outside{% endif %}</span>{% else %}<span class="muted">unconstrained</span>{% endif %}</td>
+              </tr>
+            {% empty %}<tr><td colspan="5">No sector detail is available for this variant.</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+      </div>
+      </details>
+    </article>
+    <article class="optimizer-settings collapse-panel">
+      <details data-collapse-key="optimizer-settings" open>
+      <summary>
+        <div class="row"><div><h2>Run settings and constraints</h2><p>Exactly what this variant was asked to solve.</p></div>{% if selected_scenario.diagnostics.warnings %}<span class="status status-pending">{{ selected_scenario.diagnostics.warnings|length }} warning{{ selected_scenario.diagnostics.warnings|length|pluralize }}</span>{% else %}<span class="status status-{% if selected_scenario.diagnostics.feasible %}succeeded{% else %}pending{% endif %}">{% if selected_scenario.diagnostics.feasible %}feasible{% else %}check bounds{% endif %}</span>{% endif %}</div>
+      </summary>
+      <div class="collapse-body">
+      {% if selected_scenario.diagnostics.warnings %}
+        <div class="warning">
+          {% for warning in selected_scenario.diagnostics.warnings %}<p>{{ warning }}</p>{% endfor %}
+        </div>
+      {% endif %}
+      <h3>Method</h3>
+      <dl>
+        {% for row in optimizer_setting_rows %}<div><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></div>{% endfor %}
+        <div><dt>Risk-free rate used</dt><dd>{{ selected_scenario.diagnostics.risk_free_rate|percentage:2 }}</dd></div>
+        <div><dt>Bound violations</dt><dd>{{ selected_scenario.diagnostics.violations|length }}</dd></div>
+      </dl>
+      <h3>Constraints</h3>
+      {% if optimizer_constraint_rows %}
+        <ul class="optimizer-settings-list">
+          {% for row in optimizer_constraint_rows %}
+            <li><span><small>{{ row.group }}</small>{{ row.label }}</span><strong>{{ row.value }}</strong></li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">This run was solved without explicit guardrails.</p>
+      {% endif %}
+      {% if selected_scenario.diagnostics.factor_premia %}
+        <h3>Factor premiums used</h3>
+        <p class="muted">Each premium sits between your prior and the trailing mean. The history weight is how much the data earned, given how precisely that window measures the factor's mean.</p>
+        <div class="table-wrap compact-table">
+          <table>
+            <thead><tr><th>Factor</th><th>Prior</th><th>Trailing mean</th><th>Std error</th><th>History weight</th><th>Premium used</th></tr></thead>
+            <tbody>
+              {% for name, row in selected_scenario.diagnostics.factor_premia.items %}
+                <tr>
+                  <td>{{ name }}</td>
+                  <td>{{ row.assumption|percentage:2 }}</td>
+                  <td>{{ row.historical_mean|percentage:2 }}</td>
+                  <td>{{ row.historical_standard_error|percentage:2 }}</td>
+                  <td>{{ row.history_weight|percentage:0 }}</td>
+                  <td><strong>{{ row.premium|percentage:2 }}</strong></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+      </div>
+      </details>
+    </article>
+  </div>
+  <article class="collapse-panel">
+    <details data-collapse-key="optimizer-exposure" open>
+    <summary>
+      <div class="row"><div><h2>Factor exposure shift</h2><p>Weighted factor beta before and after optimization. These are betas, not portfolio weights, so a sector factor beta is not the same thing as that sector's weight.</p></div><span class="muted">{{ optimizer_exposure_rows|length }} factors</span></div>
+    </summary>
+    <div class="collapse-body">
+    <div class="table-wrap optimizer-exposure-table">
+      <table data-sortable>
+        <thead><tr><th>Factor</th><th>Before</th><th>After</th><th>Change</th><th>Bound</th></tr></thead>
+        <tbody>
+          {% for row in optimizer_exposure_rows %}
+            <tr>
+              <td>{{ row.name }}</td>
+              <td>{{ row.original|floatformat:3 }}</td>
+              <td><strong>{{ row.optimized|floatformat:3 }}</strong></td>
+              <td class="{% if row.change > 0 %}optimizer-positive{% elif row.change < 0 %}optimizer-negative{% endif %}">{{ row.change|floatformat:3 }}</td>
+              <td>{% if row.bound %}{{ row.bound }}{% if row.bound_kind %} {{ row.bound_kind }}{% endif %} <span class="optimizer-bound-flag {% if row.within %}optimizer-bound-ok{% else %}optimizer-bound-out{% endif %}">{% if row.within %}within{% else %}outside{% endif %}</span>{% else %}<span class="muted">unconstrained</span>{% endif %}</td>
+            </tr>
+          {% empty %}<tr><td colspan="5">No exposure detail is available for this variant.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <details class="optimizer-advanced">
+      <summary>Show as chart</summary>
+      <div class="chart" data-chart="optimizer-exposure" data-title="Before / after factor exposure"></div>
+      <div hidden>{% for row in optimizer_exposure_rows %}<span data-optimizer-exposure data-name="{{ row.name }}" data-original="{{ row.original }}" data-optimized="{{ row.optimized }}"></span>{% endfor %}</div>
+    </details>
+    </div>
+    </details>
+  </article>
+  {% if selected_scenario.status == "succeeded" %}
+    <article class="optimizer-history collapse-panel">
+      <details data-collapse-key="optimizer-history" open>
+      <summary>
+        <div class="row">
+          <div>
+            <p class="eyebrow">Historical simulation</p>
+            <h2>24-month ranking versus optimized weights</h2>
+            <p>Each month uses that month’s ranked names. Original equal-weights them; Optimized applies this variant’s method and constraints. Compared with SPY.</p>
+          </div>
+          <span class="status status-pending">approximate</span>
+        </div>
+      </summary>
+      <div class="collapse-body">
+      {% if scenario_backtest_job %}
+        <div id="scenario-backtest-job">
+          {% include "desk/job.html" with job=scenario_backtest_job reload_on_success=True %}
+        </div>
+      {% elif optimizer_history %}
+        <div class="metric-grid">
+          <article><span>History begins</span><strong>{{ optimizer_history.start }}</strong></article>
+          <article><span>Latest observation</span><strong>{{ optimizer_history.end }}</strong></article>
+          <article><span>Trading days</span><strong>{{ optimizer_history.observations }}</strong></article>
+          <article><span>Monthly rebalances</span><strong>{{ optimizer_history.rebalances|length }}</strong></article>
+        </div>
+        <div class="grid two">
+          <article>
+            <h2>Growth of $1</h2>
+            <div class="chart" data-chart="optimizer-history-equity"></div>
+          </article>
+          <article>
+            <h2>Drawdown</h2>
+            <div class="chart" data-chart="optimizer-history-drawdown"></div>
+          </article>
+        </div>
+        <div hidden>
+          {% for row in optimizer_history.chart_rows %}
+            <span
+              data-optimizer-history-series
+              data-date="{{ row.date }}"
+              data-optimized-equity="{{ row.optimized_equity }}"
+              data-original-equity="{{ row.original_equity }}"
+              data-spy-equity="{{ row.spy_equity }}"
+              data-optimized-drawdown="{{ row.optimized_drawdown }}"
+              data-original-drawdown="{{ row.original_drawdown }}"
+              data-spy-drawdown="{{ row.spy_drawdown }}"
+            ></span>
+          {% endfor %}
+        </div>
+        <article>
+          <div class="row">
+            <div><h2>Performance statistics</h2><p>{{ optimizer_history.methodology }}</p></div>
+            <span class="status status-pending">approximate</span>
+          </div>
+          <div class="table-wrap compact-table">
+            <table>
+              <thead><tr><th>Metric</th><th>Original</th><th>Optimized</th><th>SPY</th></tr></thead>
+              <tbody>
+                {% for row in optimizer_history.metric_rows %}
+                  <tr><td>{{ row.label }}</td><td>{{ row.original }}</td><td>{{ row.optimized }}</td><td>{{ row.spy }}</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% for warning in optimizer_history.warnings %}<p class="data-note">{{ warning }}</p>{% endfor %}
+        </article>
+        <article>
+          <div class="row"><div><h2>Monthly rebalances</h2><p>Signal at month-end; holdings begin on the next stored trading day.</p></div></div>
+          <div class="portfolio-holding-details">
+            {% for row in optimizer_history.rebalances reversed %}
+              <details>
+                <summary>
+                  <span><strong>{{ row.signal_date }}</strong> → {{ row.execution_date }}</span>
+                  <span>{{ row.tickers|length }} names · {{ row.status }}</span>
+                </summary>
+                <div class="table-wrap compact-table">
+                  <table>
+                    <thead><tr><th>Ticker</th><th>Original</th><th>Optimized</th></tr></thead>
+                    <tbody>
+                      {% for holding in row.holding_rows %}
+                        <tr>
+                          <td>{{ holding.ticker }}</td>
+                          <td>{{ holding.original|percentage:2 }}</td>
+                          <td>{{ holding.optimized|percentage:2 }}</td>
+                        </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            {% empty %}
+              <div class="empty-state"><span>No aligned historical rebalances.</span></div>
+            {% endfor %}
+          </div>
+        </article>
+      {% elif optimizer_can_replay %}
+        <form method="post" action="{% url 'desk:scenario_backtest' selected_scenario.id %}" hx-post="{% url 'desk:scenario_backtest' selected_scenario.id %}" hx-target="#scenario-backtest-job">{% csrf_token %}
+          <input type="hidden" name="factor_build_id" value="{{ selected_optimizer_build_id }}">
+          <div class="optimizer-submit">
+            <button class="secondary">Queue 24-month comparison</button>
+            <span>Uses stored monthly rankings. Results are labeled Approximate.</span>
+          </div>
+        </form>
+        <div id="scenario-backtest-job"></div>
+      {% else %}
+        <p class="data-note">This 24-month comparison needs a Stock Selection portfolio so each month can use that month’s ranked names rather than today’s holdings.</p>
+      {% endif %}
+      </div>
+      </details>
+    </article>
+  {% endif %}
+{% elif optimization_studies %}
+  <article><div class="empty-state"><strong>Select a completed variant</strong><span>Choose a study and variant below to inspect holdings, exposure shifts, and run settings.</span></div></article>
+{% endif %}
+
+<article class="optimizer-study-browser collapse-panel">
+  <details data-collapse-key="optimizer-history-list" open>
+  <summary>
+    <div class="row">
+      <div>
+        <p class="eyebrow">History</p>
+        <h2>Standard optimization studies</h2>
+        <p>Every stored run with the settings and guardrails it used. Open one to load its variants above.</p>
+      </div>
+      <span class="muted">{{ optimization_studies|length }} stud{{ optimization_studies|length|pluralize:"y,ies" }}</span>
+    </div>
+  </summary>
+  <div class="collapse-body">
+  <div class="optimizer-study-list">
+    {% for row in optimizer_study_rows %}
+      <section class="{% if selected_optimization_study.id == row.study.id %}active{% endif %}">
+        <div class="optimizer-study-title">
+          <div>
+            <a href="{% url 'desk:page' 'optimizer' %}?study_id={{ row.study.id }}"><strong>{{ row.study.name }}</strong></a>
+            <small>{{ row.study.portfolio.name }} · {{ row.study.factor_build.display_label }} · {{ row.study.created_at|date:"M j, Y H:i" }}</small>
+          </div>
+          <span class="status status-{{ row.study.status }}">{{ row.study.status }}</span>
+        </div>
+        <div class="optimizer-study-facts">
+          {% for item in row.settings %}<span><small>{{ item.label }}</small>{{ item.value }}</span>{% endfor %}
+          <span><small>Variants</small>{{ row.succeeded_count }} of {{ row.variant_count }} solved</span>
+        </div>
+        {% if row.constraints %}
+          <details class="optimizer-study-constraints">
+            <summary>{{ row.constraints|length }} constraint{{ row.constraints|length|pluralize }}</summary>
+            <div class="table-wrap compact-table">
+              <table>
+                <thead><tr><th>Group</th><th>Applies to</th><th>Bound</th></tr></thead>
+                <tbody>
+                  {% for item in row.constraints %}<tr><td>{{ item.group }}</td><td>{{ item.label }}</td><td>{{ item.value }}</td></tr>{% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        {% else %}
+          <p class="muted optimizer-study-constraints-empty">No explicit guardrails.</p>
+        {% endif %}
+        <div class="optimizer-variant-links">
+          {% for variant in row.variants %}
+            <a href="{% url 'desk:page' 'optimizer' %}?study_id={{ row.study.id }}&amp;scenario_id={{ variant.id }}" class="{% if selected_scenario.id == variant.id %}active{% endif %}">
+              <span>{{ variant.variant|title }}</span><small>{{ variant.expected_return|percentage:1 }} / {{ variant.expected_volatility|percentage:1 }}</small>
+            </a>
+          {% empty %}<p>No variants yet.</p>{% endfor %}
+        </div>
+      </section>
+    {% empty %}
+      <div class="empty-state">
+        <strong>No standard optimization studies</strong>
+        <span>Configure and queue your first run at the top of this view.</span>
+      </div>
+    {% endfor %}
+  </div>
+  </div>
+  </details>
+</article>

@@ -1,0 +1,39 @@
+<h1>Portfolios</h1>
+<p>Create and manage portfolios, then open each workspace for decomposition and optimization history.</p>
+
+<div class="grid two">
+  <article>
+    <h2>Create portfolio</h2>
+    <form method="post" enctype="multipart/form-data" action="{% url 'desk:portfolio_create' %}">{% csrf_token %}
+      <label>Name <input name="name" required></label>
+      <label>Paste CSV (weight in %) <textarea name="holdings" rows="8" placeholder="ticker,weight&#10;AAPL,10"></textarea></label>
+      <label>Or upload CSV <input type="file" name="csv" accept=".csv,text/csv"></label>
+      <label><input type="checkbox" name="equal_weight"> Equal weight helper</label>
+      <button class="primary">Create portfolio</button>
+    </form>
+  </article>
+</div>
+
+<article>
+  <h2>Portfolio list</h2>
+  <div class="table-wrap">
+    <table>
+      <tr><th>Name</th><th>Source</th><th>Holdings</th><th>Latest risk</th><th>Actions</th></tr>
+      {% for row in portfolio_rows %}
+        <tr>
+          <td><a href="{% url 'desk:portfolio_detail' row.portfolio.id %}">{{ row.portfolio.name }}</a></td>
+          <td>{{ row.portfolio.source }}</td>
+          <td>{{ row.portfolio.holdings.count }}</td>
+          <td>{{ row.latest_risk_as_of|default:"-" }}</td>
+          <td>
+            <a href="{% url 'desk:export_portfolio' row.portfolio.id %}">CSV</a>
+            <form method="post" action="{% url 'desk:portfolio_clone' row.portfolio.id %}">{% csrf_token %}<input name="name" value="{{ row.portfolio.name }} Copy"><button>Clone</button></form>
+            <form method="post" action="{% url 'desk:portfolio_archive' row.portfolio.id %}">{% csrf_token %}<button>Archive</button></form>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5">No portfolios.</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+</article>
