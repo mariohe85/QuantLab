@@ -87,18 +87,29 @@
       <div class="collapse-body">
         <div class="table-wrap">
           <table data-sortable>
-            <tr><th>Factor</th><th>Exposure</th><th>Active vs SPY</th><th>Component variance</th><th>Marginal variance</th></tr>
+            <tr><th>Factor</th><th>Exposure</th><th>Active vs SPY</th><th>Marginal risk</th><th>Contribution to risk</th><th>% of risk</th></tr>
             {% for row in portfolio_exposure_rows %}
               <tr>
                 <td>{{ row.factor }}</td>
                 <td>{{ row.exposure|floatformat:4 }}</td>
                 <td>{{ row.active_exposure|floatformat:4 }}</td>
-                <td>{{ row.component_risk|percentage_squared:3 }}</td>
-                <td>{{ row.marginal_risk|percentage_squared:3 }}</td>
+                <td>{{ row.marginal_risk|percentage:2 }}</td>
+                <td>{{ row.component_risk|percentage:2 }}</td>
+                <td>{% if row.risk_percent is not None %}{{ row.risk_percent|floatformat:2 }}%{% else %}—{% endif %}</td>
               </tr>
             {% empty %}
-              <tr><td colspan="5">No factor exposure vectors are available.</td></tr>
+              <tr><td colspan="6">No factor exposure vectors are available.</td></tr>
             {% endfor %}
+            {% if portfolio_specific_contribution is not None %}
+              <tr>
+                <td><strong>Specific</strong></td>
+                <td>—</td>
+                <td>—</td>
+                <td>—</td>
+                <td>{{ portfolio_specific_contribution|percentage:2 }}</td>
+                <td>{{ portfolio_specific_risk_percent|floatformat:2 }}%</td>
+              </tr>
+            {% endif %}
           </table>
         </div>
       </div>

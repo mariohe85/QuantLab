@@ -5,10 +5,9 @@
     const valueFormat = element.dataset.valueFormat;
     const percentage = valueFormat === "percent";
     const percentPoints = valueFormat === "percent-points";
-    const percentSquared = valueFormat === "percent-squared";
-    const percentLike = percentage || percentPoints || percentSquared;
-    const scale = percentage ? 100 : (percentSquared ? 10000 : 1);
-    const suffix = percentSquared ? " %²" : "%";
+    const percentLike = percentage || percentPoints;
+    const scale = percentage ? 100 : 1;
+    const suffix = "%";
     // Blank readings must break the line rather than plot as zero.
     const values = rows.map((row) => {
       const value = Number(row.dataset.value);

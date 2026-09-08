@@ -126,8 +126,8 @@
     <article><span>Expected volatility</span><strong>{{ selected_scenario.expected_volatility|percentage:2 }}</strong></article>
     <article><span>Sharpe ratio</span><strong>{{ selected_scenario|sharpe_ratio }}</strong></article>
     <article><span>Turnover</span><strong>{{ selected_scenario.turnover|percentage:1 }}</strong></article>
-    <article><span>Factor risk</span><strong>{{ selected_scenario.factor_variance|variance_volatility:2 }}</strong></article>
-    <article><span>Stock-specific risk</span><strong>{{ selected_scenario.specific_variance|variance_volatility:2 }}</strong></article>
+    <article><span>Factor risk (standalone)</span><strong>{{ selected_scenario.factor_variance|variance_volatility:2 }}</strong></article>
+    <article><span>Stock-specific risk (standalone)</span><strong>{{ selected_scenario.specific_variance|variance_volatility:2 }}</strong></article>
   </div>
   {% if optimizer_comparison_rows %}
     <article class="collapse-panel">

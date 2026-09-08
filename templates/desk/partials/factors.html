@@ -374,14 +374,14 @@
     <div class="metric-grid">
       <article><span>Modeled weight ratio</span><strong>{{ factor_portfolio_coverage|percentage:1 }}</strong></article>
       <article>
-        <span>Specific risk</span>
+        <span>Specific risk (standalone)</span>
         <strong>{% if factor_portfolio_specific_volatility is not None %}{{ factor_portfolio_specific_volatility|percentage:1 }}{% else %}Unavailable{% endif %}</strong>
-        {% if factor_portfolio_specific_risk_share is not None %}<small>{{ factor_portfolio_specific_risk_share|floatformat:1 }}% of total variance</small>{% endif %}
+        {% if factor_portfolio_specific_risk_share is not None %}<small>{{ factor_portfolio_specific_risk_share|floatformat:1 }}% of total risk</small>{% endif %}
       </article>
       <article>
-        <span>Factor risk</span>
+        <span>Factor risk (standalone)</span>
         <strong>{% if factor_portfolio_factor_risk is not None %}{{ factor_portfolio_factor_risk|percentage:1 }}{% else %}Unavailable{% endif %}</strong>
-        {% if factor_portfolio_factor_risk_share is not None %}<small>{{ factor_portfolio_factor_risk_share|floatformat:1 }}% of total variance</small>{% endif %}
+        {% if factor_portfolio_factor_risk_share is not None %}<small>{{ factor_portfolio_factor_risk_share|floatformat:1 }}% of total risk</small>{% endif %}
       </article>
       <article>
         <span>Total risk</span>
@@ -389,6 +389,7 @@
         <small>Annualized</small>
       </article>
     </div>
+    <p class="data-note">Standalone risks are what each piece would be on its own, so they combine in quadrature rather than by addition. The contribution-to-risk figures below are the same pieces after the diversification haircut, and those do add up to total risk.</p>
     <div class="grid two">
       <article class="collapse-panel">
         <details data-collapse-key="portfolio-tilts-chart" open>
@@ -402,8 +403,9 @@
         <details data-collapse-key="portfolio-risk-chart" open>
           <summary><h2>Factor risk contribution</h2></summary>
           <div class="collapse-body">
-            {% if factor_portfolio_risk %}
-              <div class="chart" data-chart="portfolio-contribution" data-title="Live component variance" data-value-format="percent-squared"></div>
+            {% if factor_portfolio_contributions %}
+              <div class="chart" data-chart="portfolio-contribution" data-title="Contribution to annualized risk" data-value-format="percent"></div>
+              <p class="data-note">Euler contributions to volatility: the bars sum to the {{ factor_portfolio_total_risk|percentage:1 }} total risk, so a bar is the share of portfolio volatility the factor is responsible for once its covariance with the other factors is counted.</p>
             {% else %}
               <div class="empty-state"><strong>Risk decomposition unavailable</strong><span>At least two stored factor-return dates and matching stock fits are required.</span></div>
             {% endif %}
@@ -413,7 +415,7 @@
     </div>
     <div hidden>
       {% for row in factor_portfolio_exposures %}<span data-portfolio-exposure data-name="{{ row.factor }}" data-value="{{ row.exposure }}"></span>{% endfor %}
-      {% if factor_portfolio_risk %}{% for factor, value in factor_portfolio_risk.component_risk.items %}<span data-portfolio-contribution data-name="{{ factor }}" data-value="{{ value }}"></span>{% endfor %}{% endif %}
+      {% for row in factor_portfolio_contributions %}<span data-portfolio-contribution data-name="{{ row.name }}" data-value="{{ row.contribution }}"></span>{% endfor %}
     </div>
     <article class="collapse-panel">
       <details data-collapse-key="portfolio-exposure-table" open>
@@ -421,8 +423,9 @@
         <div class="row"><div><h2>Portfolio exposure table</h2></div><span class="muted">{{ factor_portfolio_exposures|length }} factor{{ factor_portfolio_exposures|length|pluralize }}</span></div>
       </summary>
       <div class="collapse-body">
-      <div class="table-wrap"><table data-sortable><thead><tr><th>Factor</th><th>Weighted exposure</th></tr></thead><tbody>
-        {% for row in factor_portfolio_exposures %}<tr><td>{{ row.factor }}</td><td>{{ row.exposure|floatformat:4 }}</td></tr>{% empty %}<tr><td colspan="2">No modeled exposures.</td></tr>{% endfor %}
+      <div class="table-wrap"><table data-sortable><thead><tr><th>Factor</th><th>Weighted exposure</th><th>Marginal risk</th><th>Contribution to risk</th><th>% of risk</th></tr></thead><tbody>
+        {% for row in factor_portfolio_exposures %}<tr><td>{{ row.factor }}</td><td>{{ row.exposure|floatformat:4 }}</td><td>{{ row.marginal_risk|percentage:2 }}</td><td>{{ row.contribution|percentage:2 }}</td><td>{% if row.risk_percent is not None %}{{ row.risk_percent|floatformat:2 }}%{% else %}—{% endif %}</td></tr>{% empty %}<tr><td colspan="5">No modeled exposures.</td></tr>{% endfor %}
+        {% if factor_portfolio_contributions %}<tr><td><strong>Specific</strong></td><td>—</td><td>—</td><td>{{ factor_portfolio_risk.specific_contribution|percentage:2 }}</td><td>{{ factor_portfolio_specific_risk_share|floatformat:2 }}%</td></tr>{% endif %}
       </tbody></table></div>
       {% if factor_portfolio_coverage < 1 %}<p class="data-note">Metrics include only holdings with an exact {{ selected_model_level }} fit. Missing weight is not redistributed.</p>{% endif %}
       </div>

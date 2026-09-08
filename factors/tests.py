@@ -80,6 +80,38 @@ class FactorEngineTests(SimpleTestCase):
             result["factor_variance"] + result["specific_variance"],
         )
 
+    def test_risk_contributions_sum_to_volatility_not_variance(self):
+        # Correlated factors are the case where a variance split and a risk
+        # split disagree the most, so the Euler identity is worth pinning down.
+        weights = pd.Series({"A": 0.6, "B": 0.4})
+        exposures = pd.DataFrame(
+            {"F": [1.0, 0.5], "G": [0.2, -0.4]}, index=weights.index
+        )
+        covariance = pd.DataFrame(
+            [[0.04, 0.01], [0.01, 0.09]], index=["F", "G"], columns=["F", "G"]
+        )
+        result = portfolio_decomposition(
+            weights, exposures, covariance, pd.Series({"A": 0.1, "B": 0.2})
+        )
+        volatility = result["predicted_volatility"]
+        self.assertAlmostEqual(
+            result["factor_contribution"].sum() + result["specific_contribution"],
+            volatility,
+        )
+        self.assertAlmostEqual(
+            result["risk_percent"].sum() + result["specific_risk_percent"], 1.0
+        )
+        # A contribution is the variance component priced per unit of risk, and
+        # marginal risk is the derivative of volatility with respect to the beta.
+        self.assertAlmostEqual(
+            result["factor_contribution"]["F"],
+            result["factor_components"]["F"] / volatility,
+        )
+        self.assertAlmostEqual(
+            result["factor_marginal_risk"]["G"],
+            result["factor_marginal"]["G"] / volatility,
+        )
+
     def test_return_attribution_identity(self):
         weights = pd.Series({"A": 0.5, "B": 0.5})
         exposures = pd.DataFrame({"F": [1.0, 0.0]}, index=weights.index)

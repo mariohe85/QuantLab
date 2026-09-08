@@ -1008,7 +1008,11 @@ class PortfolioRiskSnapshotTests(TestCase):
         self.assertIsNotNone(response.context["factor_portfolio_risk"])
         self.assertNotContains(response, "Risk decomposition unavailable")
         html = response.content.decode()
-        for label in ("Specific risk", "Factor risk", "Total risk"):
+        for label in (
+            "Specific risk (standalone)",
+            "Factor risk (standalone)",
+            "Total risk",
+        ):
             card = html.split(f"<span>{label}</span>")[1].split("</article>")[0]
             self.assertNotIn("Unavailable", card, label)
         self.assertAlmostEqual(
@@ -1062,6 +1066,58 @@ class PortfolioRiskSnapshotTests(TestCase):
         empty = Portfolio.objects.create(name="No Models")
         self.assertFalse(_refresh_portfolio_risk(empty, self.build, "base_sector"))
         self.assertFalse(empty.risk_snapshots.exists())
+
+    def test_contribution_chart_reports_risk_that_adds_up_to_total_risk(self):
+        response = self.client.get(
+            "/portfolio/",
+            {
+                "portfolio_tab": "exposure",
+                "build_id": self.build.pk,
+                "portfolio_id": self.portfolio.pk,
+                "model_level": "base_sector",
+            },
+        )
+        rows = response.context["factor_portfolio_contributions"]
+        self.assertTrue(rows)
+        self.assertTrue(rows[-1]["specific"])
+        self.assertAlmostEqual(
+            sum(row["contribution"] for row in rows),
+            response.context["factor_portfolio_total_risk"],
+        )
+        self.assertAlmostEqual(sum(row["percent"] for row in rows), 100.0)
+        # The bars must never be plotted on a squared-percent scale again.
+        self.assertNotContains(response, "%²")
+        self.assertNotContains(response, "percent-squared")
+
+    def test_contributions_are_ordered_from_the_largest_risk_taker(self):
+        response = self.client.get(
+            "/portfolio/",
+            {
+                "portfolio_tab": "exposure",
+                "build_id": self.build.pk,
+                "portfolio_id": self.portfolio.pk,
+                "model_level": "base_sector",
+            },
+        )
+        factors = [
+            row["contribution"]
+            for row in response.context["factor_portfolio_contributions"]
+            if not row["specific"]
+        ]
+        self.assertEqual(factors, sorted(factors, reverse=True))
+
+    @patch("desk.workflows._dataset_for_build")
+    def test_snapshot_stores_contributions_in_volatility_units(self, dataset):
+        dataset.return_value = self.dataset()
+        self.assertTrue(
+            _refresh_portfolio_risk(self.portfolio, self.build, "base_sector")
+        )
+        snapshot = self.portfolio.risk_snapshots.get()
+        specific = snapshot.specific_variance / snapshot.predicted_volatility
+        self.assertAlmostEqual(
+            sum(snapshot.component_risk.values()) + specific,
+            snapshot.predicted_volatility,
+        )
 
 
 class SignalsPageTests(TestCase):
@@ -2095,8 +2151,8 @@ class OptimizationWorkflowTests(TestCase):
                 "Expected volatility",
                 "Sharpe ratio",
                 "Turnover",
-                "Factor risk",
-                "Stock-specific risk",
+                "Factor risk (standalone)",
+                "Stock-specific risk (standalone)",
             ],
         )
         # Volatility is the square root of variance, not a rescaled variance.

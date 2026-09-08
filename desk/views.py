@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import logging
+import math
 
 import pandas as pd
 from django.db import models
@@ -325,6 +326,39 @@ def _portfolio_build(request, model_level, default_build):
     )
 
 
+def _risk_contribution_rows(decomposition):
+    """Order the Euler risk split largest first and close it with specific risk.
+
+    Every entry is a contribution to volatility, so the column adds up to the
+    portfolio's predicted volatility and the shares add up to one.
+    """
+    if not decomposition:
+        return []
+    volatility = decomposition["predicted_volatility"]
+    if not volatility:
+        return []
+    rows = [
+        {
+            "name": factor,
+            "contribution": value,
+            "percent": 100 * value / volatility,
+            "specific": False,
+        }
+        for factor, value in decomposition["factor_contribution"].items()
+    ]
+    rows.sort(key=lambda row: row["contribution"], reverse=True)
+    specific = decomposition["specific_contribution"]
+    rows.append(
+        {
+            "name": "Specific",
+            "contribution": specific,
+            "percent": 100 * specific / volatility,
+            "specific": True,
+        }
+    )
+    return rows
+
+
 def _portfolio_factor_state(request, build, model_level):
     portfolios = Portfolio.objects.filter(archived=False).order_by("name")
     selected_id = request.GET.get("portfolio_id") or request.POST.get("portfolio_id")
@@ -487,7 +521,19 @@ def _portfolio_factor_state(request, build, model_level):
                     dtype=float,
                 ),
             )
-            live_risk["component_risk"] = live_risk["factor_components"].to_dict()
+            live_risk["component_risk"] = live_risk["factor_contribution"].to_dict()
+    contribution_rows = _risk_contribution_rows(live_risk)
+    if live_risk:
+        marginal = live_risk["factor_marginal_risk"]
+        contribution = live_risk["factor_contribution"]
+        volatility = live_risk["predicted_volatility"]
+        for row in exposure_rows:
+            value = contribution.get(row["factor"])
+            row["marginal_risk"] = marginal.get(row["factor"])
+            row["contribution"] = value
+            row["risk_percent"] = (
+                100 * value / volatility if value is not None and volatility else None
+            )
     modeled_count = sum(row["fit"] is not None for row in holding_rows)
     live_total_variance = live_risk["predicted_variance"] if live_risk else None
     live_specific_risk = (
@@ -548,6 +594,7 @@ def _portfolio_factor_state(request, build, model_level):
             else None
         ),
         "factor_portfolio_risk": live_risk,
+        "factor_portfolio_contributions": contribution_rows,
         "portfolio_workspace_tab": portfolio_tab,
         "portfolio_matrix_factors": matrix_factors,
         "portfolio_modeled_holdings": modeled_count,
@@ -2074,6 +2121,15 @@ def portfolio_detail(request, pk: int):
     )
     holding_rows = []
     exposure_rows = []
+    specific_contribution = None
+    specific_risk_percent = None
+    if latest_risk and latest_risk.predicted_volatility:
+        specific_contribution = (
+            latest_risk.specific_variance / latest_risk.predicted_volatility
+        )
+        specific_risk_percent = (
+            100 * specific_contribution / latest_risk.predicted_volatility
+        )
     if latest_risk and latest_risk.factor_build_id:
         fits = (
             StockModelFit.objects.filter(
@@ -2106,16 +2162,29 @@ def portfolio_detail(request, pk: int):
                     "exposures": exposures,
                 }
             )
+        volatility = latest_risk.predicted_volatility
         for factor, value in latest_risk.exposures.items():
+            contribution = latest_risk.component_risk.get(factor)
             exposure_rows.append(
                 {
                     "factor": factor,
                     "exposure": value,
                     "active_exposure": latest_risk.active_exposures.get(factor),
-                    "component_risk": latest_risk.component_risk.get(factor),
+                    "component_risk": contribution,
                     "marginal_risk": latest_risk.marginal_risk.get(factor),
+                    "risk_percent": (
+                        100 * contribution / volatility
+                        if contribution is not None and volatility
+                        else None
+                    ),
                 }
             )
+        exposure_rows.sort(
+            key=lambda row: (
+                row["component_risk"] if row["component_risk"] is not None else -math.inf
+            ),
+            reverse=True,
+        )
     return render(
         request,
         "desk/platform.html",
@@ -2125,6 +2194,8 @@ def portfolio_detail(request, pk: int):
             "portfolio_holdings_rows": holding_rows,
             "portfolio_latest_risk": latest_risk,
             "portfolio_exposure_rows": exposure_rows,
+            "portfolio_specific_contribution": specific_contribution,
+            "portfolio_specific_risk_percent": specific_risk_percent,
             "portfolio_scenarios": scenarios,
             "portfolio_selected_scenario": selected_scenario,
             "portfolio_selected_scenario_holdings": (

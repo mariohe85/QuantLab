@@ -1735,8 +1735,8 @@ def monitor_portfolio(parameters: dict, progress) -> dict:
             "tracking_error": float(np.sqrt(max(tracking_variance, 0))),
             "drawdown": drawdown,
             "concentration": float((weights**2).sum()),
-            "component_risk": _json(decomposition["factor_components"].to_dict()),
-            "marginal_risk": _json(decomposition["factor_marginal"].to_dict()),
+            "component_risk": _json(decomposition["factor_contribution"].to_dict()),
+            "marginal_risk": _json(decomposition["factor_marginal_risk"].to_dict()),
             "attribution": _json(attribution),
         },
     )

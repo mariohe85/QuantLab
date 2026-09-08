@@ -213,6 +213,13 @@ def portfolio_decomposition(
         np.sum((weights * specific_vol.reindex(weights.index).fillna(0)) ** 2)
     )
     total = factor_variance + specific_variance
+    volatility = float(np.sqrt(max(total, 0)))
+    # Volatility is homogeneous of degree one in the weights, so Euler's theorem
+    # makes these contributions add up to the portfolio volatility itself rather
+    # than to its square. Reporting risk that way keeps every bar on the same
+    # scale as the headline number instead of on a squared-percent scale.
+    divisor = volatility if volatility > 0 else np.nan
+    factor_contribution = factor_components / divisor
     expected = (
         float(beta @ expected_factor_returns.reindex(beta.index).fillna(0))
         if expected_factor_returns is not None
@@ -222,6 +229,11 @@ def portfolio_decomposition(
         "exposure": beta,
         "factor_marginal": factor_marginal,
         "factor_components": factor_components,
+        "factor_marginal_risk": factor_marginal / divisor,
+        "factor_contribution": factor_contribution,
+        "specific_contribution": specific_variance / divisor,
+        "risk_percent": factor_contribution / divisor,
+        "specific_risk_percent": specific_variance / total if total else np.nan,
         "factor_percent": (
             factor_components / factor_variance
             if factor_variance
@@ -230,7 +242,7 @@ def portfolio_decomposition(
         "factor_variance": factor_variance,
         "specific_variance": specific_variance,
         "predicted_variance": total,
-        "predicted_volatility": float(np.sqrt(max(total, 0))),
+        "predicted_volatility": volatility,
         "expected_factor_return": expected,
     }
 

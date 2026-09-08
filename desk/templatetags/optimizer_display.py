@@ -79,15 +79,3 @@ def variance_volatility(value, decimals=2):
     if numeric < 0:
         return "—"
     return f"{math.sqrt(numeric) * 100:.{int(decimals)}f}%"
-
-
-@register.filter
-def percentage_squared(value, decimals=2):
-    """Format decimal variance in squared percentage-point units."""
-    if value is None or value == "":
-        return "—"
-    try:
-        precision = int(decimals)
-        return f"{float(value) * 10000:.{precision}f} %²"
-    except (TypeError, ValueError):
-        return "—"
